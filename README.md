@@ -69,3 +69,4 @@ by default it will intercept console.log/warn/error, and print stack traces on e
   - keyboard for console input
   - `eval()` to run code on the fly from inside VR
   - support for native console text inline colors
+  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console).
