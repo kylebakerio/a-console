@@ -10,6 +10,13 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 
 ![Screenshot from 2022-08-20 04-21-13](https://user-images.githubusercontent.com/6391152/185741660-0c40d8e8-563d-459a-bf41-1abfcc1b1560.png)
 
+
+
+https://user-images.githubusercontent.com/6391152/185741975-a4cf08da-a521-46db-92f2-db312cac0163.mp4
+
+
+
+
 ## demo
 https://canvas-log.glitch.me/
 
