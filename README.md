@@ -26,6 +26,13 @@ Literally just add this line to your scene:
 <a-console position="0 1.5 -2"></a-console>
 ```
 
+I like to add it to my hand so I can walk around with it in VR:
+```html
+<a-entity id="my-tracked-left-hand" class="local-hand"  oculus-touch-controls="hand:left;">
+  <a-console position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
+</a-entity>  
+```
+  
 by default it will intercept console.log/warn/error, and print stack traces on error. you can also manually print to the console with the `logToCanvas()` and `writeToCanvas()` methods. (They do _not_ currently run commands, just allow you to print text.)
 
 ## options
