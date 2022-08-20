@@ -4,6 +4,7 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 - Prints stack traces for errors. Handles line breaks and auto-scrolls on new input.
 - Stringifies and pretty-prints objects that are console-logged. 
 - Automatically handles newlines, and creates line breaks for lines over 98 chars as needed
+- Developed for A-Frame 1.3.0
 
 <a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
 
@@ -15,7 +16,7 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 https://user-images.githubusercontent.com/6391152/185741975-a4cf08da-a521-46db-92f2-db312cac0163.mp4
 
 
-
+_Also check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats) to see live stats while in-headset_
 
 ## demo
 https://canvas-log.glitch.me/
