@@ -16,7 +16,7 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 https://user-images.githubusercontent.com/6391152/185741975-a4cf08da-a521-46db-92f2-db312cac0163.mp4
 
 
-_Also check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats) to see live stats while in-headset_
+_Also: check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats) to see live stats while in-headset._
 
 ## demo
 https://canvas-log.glitch.me/
