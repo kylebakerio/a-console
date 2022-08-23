@@ -5,7 +5,7 @@ var meshMixin = AFRAME.primitives.getMeshMixin();
 
 AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
   defaultComponents: {
-    geometry: {primitive: 'plane',width:1080/1000,height:1920/1000, scale:'.5 .5 .5'},
+    geometry: {primitive: 'plane', width:1.6*.666, height:2.56*.666}, // 1920 x 1200, / 3 for more manageable size
     material: {side: 'double'},
     console: {},
   },
@@ -13,76 +13,136 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
   mappings: {
     height: 'geometry.height',
     width: 'geometry.width',
-    fontsize: 'console.fontSize',
-    fontfamily: 'console.fontFamily',
-    textcolor: 'console.textColor',
-    backgroundcolor: 'console.backgroundColor',
-    canvaswidth: 'console.canvasWidth',
-    canvasheight: 'console.canvasHeight',
+    "font-size": 'console.fontSize',
+    
+    // font-family MUST be a monospace font, or expect things to break :)
+    "font-family": 'console.fontFamily',
+    "text-color": 'console.textColor',
+    "background-color": 'console.backgroundColor',
+    // ppcm: 'console.pixelsPerCentimeter',
+    // side: 'material.side',
+    'pixel-width': 'console.canvasWidth',
+    'pixel-height': 'console.canvasHeight', 
+    // pixel-height not necessary or looked at unless allow-custom-aspect-ratio is true 
+    'allow-custom-aspect-ratio': 'console.pixelRatioOverride',
+    
+    'skip-intro': 'console.skipIntroAnimation',
+    'font-size': 'console.fontSize',
+    // always in 'pixels'
+    
+    demo: 'console.demo',
+    // fill screen with colored timestamps
   }
 }));
-
 
 
 AFRAME.registerComponent('console', {
   dependencies: ['geometry', 'material'],
   schema: {
-    fontSize: {default: 18, type: 'number'},
+    fontSize: {default: 20, type: 'number'},
     fontFamily: {default: 'monospace', type: 'string'},
     textColor: {default: 'green', type: 'color'},
     backgroundColor: {default: 'black', type: 'color'},
     
-    canvasWidth: {default: 1080, type: 'number'},
-    canvasHeight: {default: 1920, type: 'number'},
+    // how much historical input to store
+    history: { default: 2000, type:'number'},
+    
+    // canvas dimensions corresponsd to screen resolution, geometry to screen size.
+    // 2560x1600 = 2k 16:10 ratio screen, vertically.
+    // note that geometry will override this setting, and only width will be observed,
+    // unless pixelRatioOverride = true, to keep pixels square by default, and allow
+    // resizing screen without it affecting pixels by default
+    canvasWidth: {default: 1600, type: 'number'},
+    canvasHeight: {default: 2560, type: 'number'}, 
+    pixelRatioOverride: {default: false, type: 'bool'},
     
     captureConsole: {default: ['log','warn','error'], type: 'array'},
-    captureConsoleColors: {default: [null,'yellow','red'], type: 'array'},
-    printStackTraceFor: {default: ['error'], type:'array'},
-    captureConsoleActive: {default: true, type:'bool'},
+    captureConsoleColors: {default: ["",'yellow','red'], type: 'array'},
+    captureStackTraceFor: {default: ['error'], type:'array'},
+    showStackTraces: {default: true, type:'bool'},
     
     skipIntroAnimation: {default: false, type: 'bool'},
     introLineDelay: {default: 75, type:'number'},
+    demo: {default: false, type: 'bool'},
   },
-  async init() {
-    this.canvas = document.createElement('canvas');
+  init() {
+    // these two lines set up a second canvas used for measuring font width
+    this.textSizeCanvas = document.createElement("canvas");
+    this.textCanvasCtx = this.textSizeCanvas.getContext("2d");
+    
+    this.hookIntoGeometry();
+    
     this.lineQ = []; // where we store processor lines of console output
-    this.rawInputs = []; // where we store raw inputs (with metadata)
-    document.body.appendChild(this.canvas);
+    this.rawInputs = []; // where we store raw inputs (with some metadata) that we can reflow on console display updates
+    
+    this.canvas = document.createElement('canvas');
     this.canvas.id = "a-console-canvas"+Math.round(Math.random()*1000);
+    document.body.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
     this.el.setAttribute('material', 'src', `#${this.canvas.id}`); // TODO: may need to set as ID of canvas instead, check that this works
-    if (!this.data.skipIntroAnimation) await this.animateLogo();
-    if (this.data.captureConsoleActive) this.grabAllLogs();
+    
+    if (!this.data.skipIntroAnimation) this.logoAnimation = this.animateLogo();
+    if (this.data.captureConsole) this.grabAllLogs();
+  },
+  pause() {
+    this.isPaused = true;
+  },
+  play() {
+    this.isPaused = false;
+  },
+  hookIntoGeometry() {
+    this.oldGeometry = {
+      width: this.el.components.geometry.data.width,
+      height: this.el.components.geometry.data.height,
+    }
+    const originalGeometryUpdate = this.el.components.geometry.update.bind(this.el.components.geometry);
+    this.el.components.geometry.update = (function(oldData) {
+      console.warn("triggering original geometry update, and then triggering console update");
+      originalGeometryUpdate(oldData);
+      this.update(this.data); // trigger console update any time geometry updates, in case pixel ratio changed.
+    }).bind(this)    
   },
   changed(oldData, key) {
     return oldData[key] !== this.data[key];
   },
-  update(oldData) {
-    if (this.data.fontSize !== 18 || 
-        this.data.fontFamily !== 'monospace'
-        ) {
-      console.warn('currently built to rely on hardcoded defaults; changing these values may break stuff');
+  update(oldData) {    
+    if (this.data.fontFamily !== 'monospace') {
+      console.warn('caution: a-console expects monospace fonts');
     }
 
-    if (this.changed(oldData, 'fontSize') || this.changed(oldData, 'fontFamily')) {
-      this.ctx.font = `${this.data.fontSize}px ${this.data.fontFamily}`;
-    }
-    // if (this.changed(oldData, 'textColor')) {
-      // this.ctx.fillStyle = this.data.textColor;
-    // }
-    if (this.changed(oldData, 'canvasWidth') || this.changed(oldData, 'canvasHeight')) {
-      this.canvas.setAttribute('width',this.data.canvasWidth);
-      this.canvas.setAttribute('height',this.data.canvasHeight);
-      
-      if (this.data.canvasWidth !== 1080 ||
-        this.data.canvasHeight !== 1920) {
-          console.warn("canvas resizing not fully implemented");
+    if (this.changed(oldData, 'canvasWidth') ||
+        this.changed(oldData, 'canvasHeight') ||
+        this.oldGeometry.width !== this.el.components.geometry.data.width || 
+        this.oldGeometry.height !== this.el.components.geometry.data.height) {
+      // this.canvas.setAttribute('width', this.el.components.geometry.data.width * 100 * this.data.pixelsPerCentimeter);
+      // this.canvas.setAttribute('height', this.el.components.geometry.data.height * 100 * this.data.pixelsPerCentimeter);
+      this.canvas.setAttribute('width', this.data.canvasWidth);
+      let geometryRatio = Math.round( (this.el.components.geometry.data.height / this.el.components.geometry.data.width) * 1000) / 1000;
+      let pixelRatio = this.data.canvasHeight / this.data.canvasWidth;
+      console.warn("geometry or canvasprops update!", pixelRatio, geometryRatio)
+      if (geometryRatio === pixelRatio || this.data.pixelRatioOverride) {
+        this.canvas.setAttribute('height', this.data.canvasHeight);
       }
+      else {
+          const correctAspectRatioHeight = Math.round(this.data.canvasWidth * geometryRatio);
+          console.log(`set canvas height to ${correctAspectRatioHeight}, because pixel width is ${this.data.canvasWidth} and geometry ratio h/w is ${geometryRatio}`)
+          this.canvas.setAttribute('height', correctAspectRatioHeight);
+          this.el.setAttribute('console','canvasHeight',correctAspectRatioHeight);
+          // this.data.canvasHeight = correctAspectRatioHeight // there's a possibility we should do it this way to be safe...
+      }
+      this.el.setAttribute('material', 'src', ``); // TODO: may need to set as ID of canvas instead, check that this works
+      this.el.setAttribute('material', 'src', `#${this.canvas.id}`); // TODO: may need to set as ID of canvas instead, check that this works
+      this.reflowAllLines();
     }
+
     if (this.changed(oldData, 'backgroundColor')) {
-      this.cleanBackground();
       this.writeToCanvas();
     }
+    
+    if (this.changed(oldData, 'fontSize') || this.changed(oldData, 'fontFamily')) {
+      this.ctx.font = `${this.data.fontSize}px ${this.data.fontFamily}`;
+      this.reflowAllLines();
+    }    
   },
   async animateLogo() {
     return new Promise((resolve, reject) => {
@@ -91,7 +151,14 @@ AFRAME.registerComponent('console', {
         setTimeout( () => {
           this.writeToCanvas(line, logoGradient[i+8]);
           if (i+1 === logoArray.length) {
-            setTimeout(() => {this.writeToCanvas('dev@aframe:~$', logoGradient[i+9]); resolve()}, i*this.data.introLineDelay+100)
+            setTimeout(() => {
+              this.writeToCanvas('dev@aframe:~$', logoGradient[i+9]); resolve(); 
+              let counter = 1; let up = true; let theLine = "";
+              if (this.data.demo) setInterval(() => {
+                if (fullScreenGradient[counter+1] && counter !== 0) {up ? counter++ : counter--} else {up = !up; up ? counter++ : counter--;} 
+                theLine = theLine.length < 1000 ? theLine + JSON.stringify(new Date()) : JSON.stringify(new Date()); this.writeToCanvas(theLine, fullScreenGradient[counter])
+              }, Math.random() * 150)
+            }, 1000)
           }
         }, i*this.data.introLineDelay)
       })
@@ -99,6 +166,32 @@ AFRAME.registerComponent('console', {
   },
   scroll() {
     // todo
+  },
+  calcTextWidth() {
+    this.textCanvasCtx.font = this.ctx.font;
+    this.textData = this.textCanvasCtx.measureText('a');
+    this.fontWidth = this.textData.width;
+
+    this.maxConsoleLines = Math.floor(this.data.canvasHeight / this.data.fontSize);
+    this.yMargin = (Math.ceil(this.maxConsoleLines * 0.01));
+    this.maxConsoleLines-= Math.ceil(this.yMargin); // this is broken for some reason
+    
+    this.maxLineWidth = (this.data.canvasWidth / this.fontWidth);
+    this.xMargin = Math.ceil(this.maxLineWidth * .02);
+    this.maxLineWidth -= this.xMargin; // 1% reduce for buffer
+    this.maxLineWidth = Math.ceil(this.maxLineWidth);
+  },
+  reflowAllLines() {
+    this.calcTextWidth();
+    if (!this.lineQ.length) return;
+    console.error("reflow lines not yet finished being implemented, fix me")
+    // used when font size or screen size changes, to recompute line breaks.
+    // can also used when toggling all stack traces on/off, or when filtering
+    this.lineQ = [];
+    this.rawInputs.forEach(rawInput => {
+      this.addTextToQ(rawInput.text, rawInput.color, rawInput.isStackTrace, true)
+    });
+    this.writeToCanvas();
   },
   grabAllLogs() {
     console.log(this.data,1)
@@ -112,30 +205,46 @@ AFRAME.registerComponent('console', {
       console[consoleFuncName] = function() {
         originalFn(...arguments);
         
-        if (consoleComponent.data.captureConsoleActive) {
-          let arrayOfArgs = [...arguments]
-          if (consoleComponent.data.printStackTraceFor.includes(consoleFuncName)) {
+        if (consoleComponent.data.captureConsole) {
+          const arrayOfArgs = [...arguments];
+          let hasStackTrace = false;
+          if (consoleComponent.data.captureStackTraceFor.includes(consoleFuncName)) {
             arrayOfArgs.push(new Error().stack);
+            hasStackTrace = true;
           }
-          consoleComponent.logToCanvas(arrayOfArgs,consoleFuncColor || consoleComponent.data.textColor);
+          consoleComponent.logToCanvas(arrayOfArgs,consoleFuncColor || consoleComponent.data.textColor, hasStackTrace);
         }
       };
     }
     // uncomment this line to fill up the console with timestamps
-    // setInterval(() => {this.writeToCanvas(JSON.stringify(new Date()), logoGradient[Math.round(Math.random() * 40)])}, Math.random() * 700)
   },
-  addTextToQ(text, color) {
-    let maxLineWidth = 98; // todo: replace with calculation... can it be done?
-    
-    text.split('\n').forEach(newLine => {
-      for (let i = 0; i < newLine.length / maxLineWidth; i++) {
-        let maxLengthSegment = newLine.slice(i*maxLineWidth, (i*maxLineWidth) + maxLineWidth);
+  addTextToQ(text, color, isStackTrace, reflow) {
+    if (!reflow) {
+      this.rawInputs.push({
+        text,
+        color,
+        isStackTrace
+      });
+      if (this.rawInputs.length > this.data.history) {
+        this.rawInputs.shift();
       }
-      this.lineQ.push([newLine, color]);
-    })
+    }
+
+    if (!isStackTrace || this.data.showStackTraces) {
+      text.split('\n').forEach(newLine => {
+        for (let i = 0; i < newLine.length / this.maxLineWidth; i++) {
+          let maxLengthSegment = newLine.slice(i*this.maxLineWidth, (i*this.maxLineWidth) + this.maxLineWidth);
+          this.lineQ.push([maxLengthSegment, color]);
+          if (this.rawInputs.length > this.data.history) {
+            this.lineQ.shift();
+          }
+        }
+      })
+    }
   },
-  logToCanvas(arrayOfArgs, color) {
-    arrayOfArgs.forEach(arg => {
+  async logToCanvas (arrayOfArgs, color, hasStackTrace) {
+    if (this.isPaused) return; // don't store logs while paused
+    arrayOfArgs.forEach(async (arg, i) => {
       if (typeof arg !== "string") {
         try {
           arg = JSON.stringify(arg, null, 2);
@@ -143,26 +252,27 @@ AFRAME.registerComponent('console', {
           arg = `<a-console error: unable to stringify argument: ${e.stack.split('\n')[0]}>`;
         }
       }
-      this.writeToCanvas(arg, color);
+      await this.logoAnimation;
+      this.writeToCanvas(arg, color, i === arrayOfArgs.length-1 ? hasStackTrace : false);
     });
   },
-  writeToCanvas(text="", color=this.data.textColor) {
-    if (text) this.addTextToQ(text, color);
-    this.cleanBackground();
+  writeToCanvas(text="", color=this.data.textColor, isStackTrace=false) {
+    if (text) this.addTextToQ(text, color, isStackTrace, false);
+    this.refreshBackground();
     this.ctx.font = `${this.data.fontSize}px ${this.data.fontFamily}`;
-
-    for (let line = 0, i = this.lineQ.length > 95 ? this.lineQ.length - 95 : 0; 
+    
+    for (let line = 0, i = this.lineQ.length > this.maxConsoleLines ? this.lineQ.length - this.maxConsoleLines : 0; 
          i < this.lineQ.length; 
          i++, line++) {
       this.ctx.fillStyle = this.lineQ[i][1];
-      this.ctx.fillText(this.lineQ[i][0], 10, 20 + 20*line);
+      this.ctx.fillText(this.lineQ[i][0], this.xMargin, this.data.fontSize + this.data.fontSize*line);
     }
 
     this.material = this.el.getObject3D('mesh').material;
     if (this.material.map) this.material.map.needsUpdate = true;
   },
-  cleanBackground() {
-    let opacity = .9
+  refreshBackground() {
+    let opacity = 1;
     this.ctx.globalAlpha = opacity;
     this.ctx.fillStyle = this.data.backgroundColor;
     this.ctx.fillRect(0, 0, this.data.canvasWidth, this.data.canvasHeight)
