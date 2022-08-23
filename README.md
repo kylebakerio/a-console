@@ -1,14 +1,26 @@
 # a-console
 A better, canvas-based console for A-Frame. Currently in 'alpha', but should already be the best thing out there. 
+
 - Prints all logs to a virtual 16:10 2k vertically oriented screen by default
 - Handles any custom screen size you want, with any font size you want--just set geometry and pixel-width resolution
 - Prints stack traces for errors by default
 - Handles line breaks for lines that are too wide, and auto-scrolls on new input
 - Stringifies and pretty-prints objects that are console-logged
 - fully supported text reflowing for dynamic screen resolution updates, font size updates, and geometry updates
+- Developed for A-Frame 1.3.0
 
 
 <a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
+
+
+![Screenshot from 2022-08-20 04-21-13](https://user-images.githubusercontent.com/6391152/185741660-0c40d8e8-563d-459a-bf41-1abfcc1b1560.png)
+
+
+
+https://user-images.githubusercontent.com/6391152/185741975-a4cf08da-a521-46db-92f2-db312cac0163.mp4
+
+
+_Also: check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats) to see live stats while in-headset._
 
 ## demo
 https://canvas-log.glitch.me/
@@ -19,6 +31,13 @@ Literally just add this line to your scene:
 <a-console position="0 1.5 -2"></a-console>
 ```
 
+I like to add it to my hand so I can walk around with it in VR:
+```html
+<a-entity id="my-tracked-left-hand" class="local-hand"  oculus-touch-controls="hand:left;">
+  <a-console position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
+</a-entity>  
+```
+  
 by default it will intercept console.log/warn/error, and print stack traces on error. you can also manually print to the console with the `logToCanvas()` and `writeToCanvas()` methods. (They do _not_ currently run commands, just allow you to print text.)
 
 ## options
@@ -98,3 +117,5 @@ Check out index.html for some examples.
   - make stack traces toggle/revealable
   - keyboard for console input
   - `eval()` to run code on the fly from inside VR
+  - support for native console text inline colors
+  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console).
