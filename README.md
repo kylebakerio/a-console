@@ -57,8 +57,7 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     "font-family": 'console.fontFamily',
     "text-color": 'console.textColor',
     "background-color": 'console.backgroundColor',
-    // ppcm: 'console.pixelsPerCentimeter',
-    // side: 'material.side',
+    
     'pixel-width': 'console.canvasWidth',
     'pixel-height': 'console.canvasHeight', 
     // pixel-height not necessary or looked at unless allow-custom-aspect-ratio is true 
