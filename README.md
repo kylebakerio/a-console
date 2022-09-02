@@ -7,6 +7,7 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 - Handles line breaks for lines that are too wide, and auto-scrolls on new input
 - Stringifies and pretty-prints objects that are console-logged
 - fully supported text reflowing for dynamic screen resolution updates, font size updates, and geometry updates
+- no memory leaks, store a flexible, fixed amount of history
 - Developed for A-Frame 1.3.0
 
 
@@ -31,7 +32,7 @@ Literally just add this line to your scene:
 I like to add it to my hand so I can walk around with it in VR:
 ```html
 <a-entity id="my-tracked-left-hand" class="local-hand"  oculus-touch-controls="hand:left;">
-  <a-console position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
+  <a-console font-size="35" position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
 </a-entity>  
 ```
   
@@ -65,10 +66,13 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     
     'skip-intro': 'console.skipIntroAnimation',
     'font-size': 'console.fontSize',
-    // always in 'pixels'
+    // unit is 'px', supply number
+
+    // specify how much history to store
+    history: 'console.history',
     
     demo: 'console.demo',
-    // fill screen with colored timestamps
+    // fill screen with gradient colored timestamps
   }
 }));
 
@@ -112,6 +116,9 @@ Check out index.html for some examples.
   - allow JSON stringify custom settings
   - make stack traces toggle/revealable
   - keyboard for console input
-  - `eval()` to run code on the fly from inside VR
+  - `eval()` option to run commands on the fly from inside VR
   - support for native console text inline colors
-  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console).
+  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console)
+  - per-line font size
+  - rolling-character effect 
+  - single-page mode

@@ -30,6 +30,10 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     'font-size': 'console.fontSize',
     // always in 'pixels'
     
+    // specify how many console entries to store
+    history: 'console.history',
+    'capture-console': 'console.captureConsole',
+
     demo: 'console.demo',
     // fill screen with colored timestamps
   }
@@ -56,13 +60,14 @@ AFRAME.registerComponent('console', {
     canvasHeight: {default: 2560, type: 'number'}, 
     pixelRatioOverride: {default: false, type: 'bool'},
     
-    captureConsole: {default: ['log','warn','error'], type: 'array'},
+    captureConsole: {default: ['log','warn','error'], type: 'array'}, // could also specify debug, info
     captureConsoleColors: {default: ["",'yellow','red'], type: 'array'},
     captureStackTraceFor: {default: ['error'], type:'array'},
     showStackTraces: {default: true, type:'bool'},
     
     skipIntroAnimation: {default: false, type: 'bool'},
     introLineDelay: {default: 75, type:'number'},
+    keepLogo: {default: false, type:'bool'},
     demo: {default: false, type: 'bool'},
   },
   init() {
@@ -97,7 +102,7 @@ AFRAME.registerComponent('console', {
     }
     const originalGeometryUpdate = this.el.components.geometry.update.bind(this.el.components.geometry);
     this.el.components.geometry.update = (function(oldData) {
-      console.warn("triggering original geometry update, and then triggering console update");
+      console.debug("triggering original geometry update, and then triggering console update");
       originalGeometryUpdate(oldData);
       this.update(this.data); // trigger console update any time geometry updates, in case pixel ratio changed.
     }).bind(this)    
@@ -106,8 +111,8 @@ AFRAME.registerComponent('console', {
     return oldData[key] !== this.data[key];
   },
   update(oldData) {    
-    if (this.data.fontFamily !== 'monospace') {
-      console.warn('caution: a-console expects monospace fonts');
+    if (!this.data.fontFamily.includes('mono')) {
+      console.debug('CAUTION: a-console expects consistent-width fonts to function properly');
     }
 
     if (this.changed(oldData, 'canvasWidth') ||
@@ -119,13 +124,13 @@ AFRAME.registerComponent('console', {
       this.canvas.setAttribute('width', this.data.canvasWidth);
       let geometryRatio = Math.round( (this.el.components.geometry.data.height / this.el.components.geometry.data.width) * 1000) / 1000;
       let pixelRatio = this.data.canvasHeight / this.data.canvasWidth;
-      console.warn("geometry or canvasprops update!", pixelRatio, geometryRatio)
+      console.debug("geometry or canvasprops update!", pixelRatio, geometryRatio)
       if (geometryRatio === pixelRatio || this.data.pixelRatioOverride) {
         this.canvas.setAttribute('height', this.data.canvasHeight);
       }
       else {
           const correctAspectRatioHeight = Math.round(this.data.canvasWidth * geometryRatio);
-          console.log(`set canvas height to ${correctAspectRatioHeight}, because pixel width is ${this.data.canvasWidth} and geometry ratio h/w is ${geometryRatio}`)
+          console.debug(`set canvas height to ${correctAspectRatioHeight}, because pixel width is ${this.data.canvasWidth} and geometry ratio h/w is ${geometryRatio}`)
           this.canvas.setAttribute('height', correctAspectRatioHeight);
           this.el.setAttribute('console','canvasHeight',correctAspectRatioHeight);
           // this.data.canvasHeight = correctAspectRatioHeight // there's a possibility we should do it this way to be safe...
@@ -145,24 +150,66 @@ AFRAME.registerComponent('console', {
     }    
   },
   async animateLogo() {
-    return new Promise((resolve, reject) => {
-      let logoArray = AFrameLogo2.split("\n");
+    let useLogo = AFrameLogoHD;
+    let trueFontSize = this.data.fontSize;
+    return new Promise(async (resolve, reject) => {
+      await new Promise((resolve2, reject2) => {
+        let logoLineLength = useLogo.split('\n')[2].length;
+        let findFontInterval = setInterval(() => {
+          if (this.maxLineWidth >= logoLineLength || this.data.fontSize == 1) {
+            console.debug("hit correct font size for logo", this.el.id, this.data.fontSize, this.maxLineWidth, logoLineLength)
+            clearInterval(findFontInterval);
+            resolve2();
+            return;
+          }
+          console.debug("attempt reducing font size for logo to", this.data.fontSize-1)
+          this.el.setAttribute('console','fontSize',this.data.fontSize-1)
+        }, 25);
+      })
+      let logoArray = useLogo.split("\n");
+
       logoArray.forEach((line,i) => {
         setTimeout( () => {
-          this.writeToCanvas(line, logoGradient[i+8]);
+          this.writeToCanvas(line, this.getNextGradientColor());
           if (i+1 === logoArray.length) {
             setTimeout(() => {
-              this.writeToCanvas('dev@aframe:~$', logoGradient[i+9]); resolve(); 
-              let counter = 1; let up = true; let theLine = "";
-              if (this.data.demo) setInterval(() => {
-                if (fullScreenGradient[counter+1] && counter !== 0) {up ? counter++ : counter--} else {up = !up; up ? counter++ : counter--;} 
-                theLine = theLine.length < 1000 ? theLine + JSON.stringify(new Date()) : JSON.stringify(new Date()); this.writeToCanvas(theLine, fullScreenGradient[counter])
-              }, Math.random() * 150)
+              if (!this.data.keepLogo) {
+                console.debug("removing logo, restoring true font size");
+                this.rawInputs = [{text:''}];
+                this.lineQ = [''];
+                this.el.setAttribute('console','fontSize',trueFontSize);
+              }
+              this.writeToCanvas('dev@aframe:~$', this.getNextGradientColor()); resolve(); 
+              
+              if (this.data.demo) {
+                this.runDemo();
+              }
             }, 1000)
           }
         }, i*this.data.introLineDelay)
       })
     })
+  },
+  getNextGradientColor:(() => {
+    let counter = 1;
+    let up = true;
+    return function() {
+      if (fullScreenGradient[counter+1] && counter !== 0) {
+        up ? counter++ : counter--
+      } else {
+        up = !up; up ? counter++ : counter--;
+      }
+      return fullScreenGradient[counter];      
+    } 
+  })(),
+  runDemo() {
+    let theLine = "";
+    this.demoInterval = setInterval(() => {
+        theLine = theLine.length < 1000 ? 
+          theLine + JSON.stringify(new Date()) : 
+          JSON.stringify(new Date()); 
+        this.writeToCanvas(theLine, this.getNextGradientColor())
+    }, Math.random() * 150);
   },
   scroll() {
     // todo
@@ -184,7 +231,6 @@ AFRAME.registerComponent('console', {
   reflowAllLines() {
     this.calcTextWidth();
     if (!this.lineQ.length) return;
-    console.error("reflow lines not yet finished being implemented, fix me")
     // used when font size or screen size changes, to recompute line breaks.
     // can also used when toggling all stack traces on/off, or when filtering
     this.lineQ = [];
@@ -194,7 +240,6 @@ AFRAME.registerComponent('console', {
     this.writeToCanvas();
   },
   grabAllLogs() {
-    console.log(this.data,1)
     for (let i = 0; i < this.data.captureConsole.length; i++) {
       const consoleComponent = this;
       const consoleFuncName = this.data.captureConsole[i];
@@ -225,9 +270,6 @@ AFRAME.registerComponent('console', {
         color,
         isStackTrace
       });
-      if (this.rawInputs.length > this.data.history) {
-        this.rawInputs.shift();
-      }
     }
 
     if (!isStackTrace || this.data.showStackTraces) {
@@ -235,26 +277,46 @@ AFRAME.registerComponent('console', {
         for (let i = 0; i < newLine.length / this.maxLineWidth; i++) {
           let maxLengthSegment = newLine.slice(i*this.maxLineWidth, (i*this.maxLineWidth) + this.maxLineWidth);
           this.lineQ.push([maxLengthSegment, color]);
-          if (this.rawInputs.length > this.data.history) {
+          
+          if (!reflow && this.rawInputs.length > this.data.history) {
             this.lineQ.shift();
           }
         }
       })
     }
+
+    if (!reflow && this.rawInputs.length > this.data.history) {
+      this.rawInputs.shift();
+    }
   },
-  async logToCanvas (arrayOfArgs, color, hasStackTrace) {
-    if (this.isPaused) return; // don't store logs while paused
-    arrayOfArgs.forEach(async (arg, i) => {
-      if (typeof arg !== "string") {
-        try {
-          arg = JSON.stringify(arg, null, 2);
-        } catch(e) {
-          arg = `<a-console error: unable to stringify argument: ${e.stack.split('\n')[0]}>`;
-        }
+  stringify(arg) {
+    let output;
+    try {
+      output = JSON.stringify(arg, null, 2);
+    } catch(e) {
+      output = `<a-console error: unable to stringify argument: ${e.stack.split('\n')[0]}>`;
+    }
+    return output;
+  },
+  async logToCanvas(arrayOfArgs, color, hasStackTrace) {
+    if (this.isPaused) return; // don't capture logs while paused
+    let logString = "";
+    arrayOfArgs.reduce((logString, arg, i) => {
+      if (i === arrayOfArgs.length-1 && hasStackTrace) {
+        return logString;
       }
-      await this.logoAnimation;
-      this.writeToCanvas(arg, color, i === arrayOfArgs.length-1 ? hasStackTrace : false);
-    });
+      else if (typeof arg !== "string") {
+        logString += this.stringify(arg);
+      }
+      else {
+        logString += arg;
+      }
+    }, "");
+    await this.logoAnimation; // capture logs during animation, but don't display until after animation
+    this.writeToCanvas(logString, color, false);
+    if (hasStackTrace) {
+      this.writeToCanvas(arrayOfArgs[arrayOfArgs.length-1], color, true)
+    }
   },
   writeToCanvas(text="", color=this.data.textColor, isStackTrace=false) {
     if (text) this.addTextToQ(text, color, isStackTrace, false);
@@ -314,7 +376,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
 PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
 PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP`
 
-const AFrameLogo2 = `                                                                                
+const AFrameLogo2 = `
                                                                                 
            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~:            
            :~~~~~~7?~~~~~~~~7???!~7?7?7~~~~?7~~~~J!~~!J~~~???7~~~~~:            
@@ -357,8 +419,127 @@ const AFrameLogo2 = `
                                    .:~~~~:.                                     
                                                                                 
                                                                                 
-                                                                                `
+                                                                                 `
 
+const AFrameLogoHD = `
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMX0OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOKWMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:,;;,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,;oXWMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,,,;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,;;;;;;;;;,,;;,,,,,,,;,,,;;;,,,;,,;,;;,;;,,;;,;;;;;;,;;,;;;;,,;;;;,,;;;;;;;;;;;,,,,,,,;,,;;,;;,,,;;;,;;,;;,,;,;;;,,,,,;;;,,;;,;;,,,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,;;;,,,,;;;,;:c;,;;;,;;,,,,,,,,;;,,;,;cllcclccc:;,;;;clclcccc:;,;;,,;;;;;,,;cc;;;,,,,,,,,;:c:;,;;,;;,;:c:;;,,,;;;clllcllcc:;,;;,;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,;;;;,,,,,,,;lxko;;;,;;,,,,,,,;;;,,,,,cxxlllllll:;;;,cxxoollloooc;;,,;;;;;;;lkkl;;;;;;;,,,;dOxc,;;,;;,:dOx:;,,,;;lxdoollollc;,;;,;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;;,,,,,,;,,,,:doodc;;,;;,,,,;;;;;;;,,;,cxl;;,,;,,,;;,,cxo;,,;,;:okl;;;;,;;;,:dooxc;,,,;;;;,:xxxd;,;;;,;lxkkc;;,;;;lxl;;,,,,;;,,,,,;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,,,,,;;;,,;od:;od:,,,,;,,;,,,,,;,,;,,cxl;,,,;;,;;,,,cxo;,;;,;,cko;,,,;;,,:od::dd:,,;;;,,;cxolxl;;;,;cdllkl;,,,;;lxl;,;;,,,;;;;,,;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;;,,,,,;,,;;lxl;,:do;,,,;;,;;;,,,,,;;;,cxl,;;,,,,;,,;;cxo;;;,,;:oxl;;,,;;,;ldc;,cxo;;,,,,;;lxl;oxc,;,:dd:cxo;,,,;;lxl;;;;;;;;;;,;;;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;;,,,;;;,;,:do;;,;lxl;,;;;;:ccccc:;;,;;ckxllllll:;,;;,ckkoooodoooc;;;;;;;;cdl;,,;oxc;,;,,;;oxc,:do;;;ldc,:xd;,;;;;lkxoooool:;;,;;;;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;;,,,;;;;;;od:;;;;:dx:;;;;:loooool:;,;,cxo::::::;;,,,,ckxllcokxc;,;;;;,,;:dd:;;;;:dd:,,,,,;od:,;cdl;cdl;,;dx:,;;,;lxo:::;;;;;;;;;;;;,,,;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,,,;;;;;lkxooooooxkd;,;;,,;;,,,,,,;;;cxl;,,;,,,;,,,;cxo;,,;cdxc;;,,;,,;okxooooooxko;,;,,:do;;,;odloo:,,;lxc,,,,;lxl;;,,;,;;,;;,,;,,,;;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,,,,,,;cdo::::::::oxl;;;,,,;,,;,,;,,,cxl;,;,,,;;,,,;cxo;,,,;:dxc;;;,,;cxo::::::::oxl;;,,cxl;;,,:dkxc;;,,cxl;,;;;lxl,,,,;;;;,,,,,,,,,,,,;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;,,,,,,,;:dd:,;,,,,,,;oxc,;,,;;,,,,;;;;,cxl,;;,,;;,,,,,cxo;,;,,,:oxl;,,,:dd:;,;;,,;,:dd:;,;lxc,;,;;:oc;;;;;:do;,;;;lxl;;;;;;;;,,,,,;,,,,,,;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;;;,,,,,,;:oc;;;,,,,,,;:oc;;;;;;,,,;,,;,,:lc,,;,;;,;;,;,:oc;,,;;,;;lo:;,,coc;;;;,;;,;;:oc;,;cl:,;,;;,;;,,;;;;ll;,;;,cddoooooooc;,,,,,,,,;,,;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:,;;;;;;,,;;;;;;,;;;;,,,,;;,,,;;;;;;;;;;;,;;;,,,;;;;;;;;,,;;;;,,;;;;;;;;;;;;;,;;;;;;;;,;;;;;;;;,,;;;;;;;;;;,;,;;;;,,;;;;;;;;;;;;;;,,;;;;;;;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:,,;;;;,,,;,,;;;;,,;;,,,,,,,,,,;;;;;;;,,,,;;;,,,,;;;;;;;,,;;;,,,,,,,,;;;;;,,,,,;,;;;;;;;;;,,;;,,,,;;;,;;;,,,,;,,,,,,,,,;;;;;;,,,,,,,;;;;;;;;,oXWMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWk:;,,,,,,,,;;,;;,,;;;;;;;,;;;,,;;;;;;;;;,,,,,,,,,;;;;;;;;,,,;;;;;;,,,;;;;;;;;,,,,;;;,,,,,;;,,,;,,,,,,;;;;;;;,;;;,,;;;;;,,;;;;;,,,,;;,,,,,;;;;,oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMW0ollllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllxNMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMWNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWXNWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0koccd0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkdc;,,,,;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWXKK0KXNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWXOxl:,,,,;;;;;:kWMMMMMMMMMMMMMMMMMMMMMMMMWWNXK0OOOOOOO0XNWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNN0xo:;,,,,;;;;;;;;;lKWMMMMMMMMMMMMMMMMMMMMWNXK0OOOkkkOOOOkOOO0KXNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkdlc;,,,,;;;;;;;;;;;;;:kNMMMMMMMMMMMMMMMMWWXK0OOOOOkOOOOOOOOOOkOkkOO0KXWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWXOxl:,,,,,,;;;;;;;;;;;;;;;;;lKWMMMMMMMMMMMMWNXK0OOOOOOOOOOOOOOOOOOOkkkOOOkOOO0XNWWMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWX0xo:;,,,,;;;;;;;;;;;;;;;;;;;;;;:xNMMMMMMMMWNXK0OOkOOkOOOOOOOOOOOOOOOOOOOOOOOOOOkOOO0KXNWMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkdc;,,,,,;;;;;;;;;;;;;;;;;;;;;;;;;;lKWMMMMMMWKkkkkkOOOkkOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOkOOO0KXNWMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWXOdl:,,,,,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:xNMMMMMMNOddxxxkkkkOOOOOOOOOOOOOOOOOOOOOOOOOOOOkkOkkOOkkOO0XNWWMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0xo:;,,,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;l0WMMMMMNOddddddxxkkkkOOOOOOOOOkOOOOOOOOOOOOOOOOOkkOOOOOOkkOO0KXNWMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXo,',,,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;xNMMMMMXkdddddddddxxxkkkkkkOOOOOOkkOOOOOOOOOOOOOOOOOOOOOOkkkOOO0KNWMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNx,..',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;l0WMMMMN0kxdddddddddddxxkkkkkOOOOOOkkOOOOOOOOOOOOOOOkOOOOOOOO0000XWMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWO;...',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dNMMMMMWNX0OxxdddddddddddxxxkkOOOOOOOOOOOOOOOOOOOOOOOOOOO0000000XWMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0c.',,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;c0WMMMMMMMMWNK0kxdddddddddddxxxkkkOOOkkOkkkOOkOOOOOOO00000000000XWMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXo'.;l:'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dNMMMMMMMMMMMWWXKOkxdddddddddddxxxkkkkkkOOOOOOOOO000000000000KKNWMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNx,.,ldl,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cOWMMMMMMMMMMMMMMWNX0OkxddddddddddxxxkkkkOOOO0000000000000KXNNWMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWO;.'cddo:'.,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dXMMMMMMMMMMMMMMMMMMWNX0OxxdddddddddddxkO000000000000KKXNWWMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWKc'':odddl;.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cOWMMMMMMMMMMMMMMMMMMMMMWNK0kxdddddddddkO00000000KKXNNWMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXo'.;odddddc'.,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;;;dXWMMMMMMMMMMMMMMMMMMMMMMMMWXKOkxdddddkO00000KXXNWWMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx,.,lddddddo;.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:OWMMMMMMMMMMMMMMMMMMMMMMMMMMMWNX0OxxdkO0KKXNWWMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWO;.'cddddddddc'.,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNK00KXNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMKc.':oddddddddo;.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:kWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNo'.;lddddddddddc'.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;oXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx,.,cdddddddddddo;.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:kNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0:.':oddddddddddddc,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lKMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMKl'':odddddddddddddo:.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:kWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNd'.;ldddddddddddddddl,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lKWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk,.,cddddddddddddddddo:'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:xNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0:.':odddddddddddddddddl,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lKWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXl'.;oddddddddddddddddddo:'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;xNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNd'.,lddddddddddddddddddddl,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;l0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk;.,cddddddddddddddddddddxxl'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0:.':odddddddddddddddddxkO0Kk:.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;c0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXl'.;oddddddddddddddxkO00KKKK0o'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNd,.,lddddddddddddxkO0KKKKKKKKKk:.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;c0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk;.'cdddddddddxkO0KKKKKKKKKKKKK0o,.,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0:.':odddddxxkO0KKKKKKKKKKKKKKKKKO:.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cOWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXl'.;odddxkO0KKKKKKKKKKKKKKKKKKKKK0d,.,,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNd,.,lxkOO0KKKKKKKKKKKKKKKKKKKKKKKKKOc'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cOWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk;..;dOKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKd,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;oXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMKc..'',:lxO0KKKKKKKKKKKKKKKKKKKKKKKKKKOc'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:OWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKOkOKNWMMMMMMMMMMMWXo'.;cc;,'',cok0KKKKKKKKKKKKKKKKKKKKKKKKx,.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;oKWMMMMMMMMMMWX0Ok0XWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMN0kdlcccldk0NMMMMMWNKOd:'.,ldddol:;''';ldO0KKKKKKKKKKKKKKKKKKKKOl'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lx0NWMMMMWKOdolcccodOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk:;::cccclloOWWNKOdl:;,..'cdddddddolc:,'',:oxOKKKKKKKKKKKKKKKKKKx;.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:ldOXWW0l;;::ccclloxKWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx;,;;;:loooodkxl:;;;;,'.':odddddddddddol:;''';ldk0KKKKKKKKKKKKKK0l'',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cdko;,,;;:cloooo0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx;,,,;:loooolc:;;;;;,'..;lddddddddddddddol:,'''',:oxO0KKKKKKKKKKKx;.',,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;cloooo0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx;,,,;:loooolc:;;;;;,..,cdddddddddddool::;,,,,,''''';cdk0KKKKKKKK0l'.',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;;;,;cloooo0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx;,,,;:loooool:;;;;,'.'coddddddddolc:;,,,,,,,,,,,,,''.',:lxO0KKKXKOo:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,,;cloooo0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0o;,,,;:loooooc:;;;,'.':odddddooc:;;,,,,,,,,,,,,,,,,,,,''',:dOKKKXXX0Okkdoc:;;;,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,,,;clooookXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMWXOdl:;;,,,;:loollc:;;;,'..,ldddolc:;,,,,,,,,,,,,,,,,,,,,,,;:loxkOOO000KKK00O00Okdlc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,;cloollccok0XWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMWX0koc;;;;;;;;;;:clc:;;;;;;,'.,colc:;,,,,,,,,,,,,,,,,,,,,,,,;coxkO00000OOOOO0000O000000Oxoc:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;:lcc:;;;;;:cok0XWMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMWNKOdl:;;;;;;;;;;;;;;c:;;;;;;;;;,,;::;,,,,,,,,,,,,,,,,,,,,,,;:ldkOOO00000000000OOOOOOO00000000Okdoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;::;;;;;;;;;;;;:cdkKNWMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMWX0xl:;;;;;;;;;;;;;;;,,:c;,;;;;;;;;;;;;;,,,,,,,,,,,,,,,,,,,,;coxkO0000000000000000000OOOOO00000000000Oxol:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,;::,,;;;;;;;;;;;;;;:ldOKNWMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMNKkdc;;;;;;;;;;;;;;;;;,,,,;:;,,,;;;;;;;;;;;;;;,,,,,,,,,,,,,,,:okOO0000000000000000000000000OO00000000000000Okdlc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,;:;,,,;;;;;;;;;;;;;;;;;:lxOXWMMMMMMMMMMMMMMM
+MMMMMMMMMMMXkl:;;;;;;;;;;;;;;;;;;,,,,,;,,,,;;;;;;;;;;;;;;;;;;,,,,,,,,,,;lxkkOOO00000000000000000000000OOO00000000000000000Oxdl:;;;;;;;;;;;;;;;;;;;;;;;;;,,,,,;,,,,;;;;;;;;;;;;;;;;;;:lkKWMMMMMMMMMMMMMMM
+MMMMMMMMMMMMWNKkdc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,,,,;ldddxxkOO0000000000000000000000OO000000000000000000000kxoc;;;;;;;;;;;;;;;;;;;;;;;;;;,,;;;;;;;;;;;;;;;;;;;cdkKNWMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMWX0xl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,,,;ldddddddxxkO0000000000000000000OOO00000000000000000000000Oxdl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:lx0XWMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMWNKkoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lddddddddddxxkO0000000000000000OOO000000000000000000000000KK0x:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cdkKNWMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMWXOxl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;lddddddddddddxxkkOO00000000000000OO00000000000000000000KKXXXXk:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:lx0XWMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMWNKkoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;clodddddddddxxxxxxkkkOOO00000000OO0000000000000000KKKXXXXXXXk:,;;;;;;;;;;;;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOxl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:clodddddxxxxxxxddxxkOOO00000OOO000000000000KKXXXXXXXXXXXk:;;;;;;;;;;;;;;;;;;;;;;;;:lxOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:loddxxxxxxxddddddxkkkOOO0OO00000000KKKXXXXXNNXXNXXXXkc;;;;;;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOxl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;;:codxxxxxddddddddddxxkOOOO0000KKXXXXXXXXNNXXXXXXKko:;;;;;;;;;;;;;;;;;:lxOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;cooooddddddddddddddddxxkOKXXXXNXXXXXXXXXNXK0xoc:;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOxl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cc:;;:clodddddddddddddddOXXNXXXXXXNNNXX0kdl:;;;;;;;;;;;;;;;;:lxOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKkoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;::;;;;;;:cloddddddddddddOXXNXXXXXXXK0xoc:;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOdl:;;;;;;;;;;;;;;;;;;;;;;;,,,,;::,,,;;;;;;;:clooddddddxOXXXXXXXKkdl:;;;;;;;;;;;;;;;;:lxOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0koc;;;;;;;;;;;;;;;;;;;;,,,,;;;,,,;;;;;;;;;;;:clodddxOXXXKOxoc:;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOdl:;;;;;;;;;;;;;;;;;,,,,,,,,;;;;;;;;;;;;;;;;:clok0kdl:;;;;;;;;;;;;;;;;:ldOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0koc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::;;;;;;;;;;;;;;;;;cokKNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWXOdl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:ldOXWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0koc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cok0NWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWKOdl:;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:ldOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0xoc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;cok0NWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKOdl:;;;;;;;;;;;;;;;;;;;;;;;;;:ldOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0xo:;;;;;;;;;;;;;;;;;;;cok0NWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWKOdc:;;;;;;;;;;;:ldOXWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWN0xo:;;;;clok0NWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWNKOddOXNWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+`                                                                                 
 const logoGradient = ["#0501fa","#0a02f5","#0f03f0","#1404eb","#1905e6","#1e06e1","#2307dc","#2808d7","#2d09d2","#320acd","#370bc8","#3c0cc3","#410dbe","#460eb9","#4b0fb4","#5010af","#5511aa","#5a12a5","#5f13a0","#64149b","#691596","#6e1691","#73178c","#781887","#7d1982","#821a7d","#871b78","#8c1c73","#911d6e","#961e69","#9b1f64","#a0205f","#a5215a","#aa2255","#af2350","#b4244b","#b92546","#be2641","#c3273c","#c82837","#cd2932","#d22a2d","#d72b28","#dc2c23","#e12d1e","#e62e19","#eb2f14","#f0300f","#f5310a","#fa3205"];
 const fullScreenGradient = ["#0301fc","#0501fa","#0802f7","#0b02f4","#0d03f2","#1003ef","#1204ed","#1504ea","#1805e7","#1a05e5","#1d06e2","#2006df","#2207dd","#2507da","#2708d8","#2a08d5","#2d09d2","#2f09d0","#320acd","#350bca","#370bc8","#3a0cc5","#3c0cc3","#3f0dc0","#420dbd","#440ebb","#470eb8","#4a0fb5","#4c0fb3","#4f10b0","#5110ae","#5411ab","#5711a8","#5912a6","#5c12a3","#5f13a0","#61139e","#64149b","#671598","#691596","#6c1693","#6e1691","#71178e","#74178b","#761889","#791886","#7c1983","#7e1981","#811a7e","#831a7c","#861b79","#891b76","#8b1c74","#8e1c71","#911d6e","#931d6c","#961e69","#981e67","#9b1f64","#9e2061","#a0205f","#a3215c","#a62159","#a82257","#ab2254","#ae2351","#b0234f","#b3244c","#b5244a","#b82547","#bb2544","#bd2642","#c0263f","#c3273c","#c5273a","#c82837","#ca2835","#cd2932","#d02a2f","#d22a2d","#d52b2a","#d82b27","#da2c25","#dd2c22","#df2d20","#e22d1d","#e52e1a","#e72e18","#ea2f15","#ed2f12","#ef3010","#f2300d","#f4310b","#f73108","#fa3205","#fc3203"]
 // from: https://codepen.io/BangEqual/pen/VLNowO
