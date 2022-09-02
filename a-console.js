@@ -28,14 +28,17 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     
     'skip-intro': 'console.skipIntroAnimation',
     'font-size': 'console.fontSize',
-    // always in 'pixels'
+    // always in 'pixels' (px), supply '18' to get '18px' 
     
-    // specify how many console entries to store
+    // specify how many input entries to save for resizing/scrolling
     history: 'console.history',
     'capture-console': 'console.captureConsole',
 
-    demo: 'console.demo',
     // fill screen with colored timestamps
+    demo: 'console.demo',
+    
+    'inject-keyboard': 'console.injectKeyboard',
+    'use-cursor': 'console.kbCursor',
   }
 }));
 
@@ -60,7 +63,8 @@ AFRAME.registerComponent('console', {
     canvasHeight: {default: 2560, type: 'number'}, 
     pixelRatioOverride: {default: false, type: 'bool'},
     
-    captureConsole: {default: ['log','warn','error'], type: 'array'}, // could also specify debug, info
+    captureConsole: {default: ['log','warn','error'], type: 'array'},
+    // ^could also specify debug, info
     captureConsoleColors: {default: ["",'yellow','red'], type: 'array'},
     captureStackTraceFor: {default: ['error'], type:'array'},
     showStackTraces: {default: true, type:'bool'},
@@ -69,6 +73,10 @@ AFRAME.registerComponent('console', {
     introLineDelay: {default: 75, type:'number'},
     keepLogo: {default: false, type:'bool'},
     demo: {default: false, type: 'bool'},
+    
+    injectKeyboard: {default: false, type: 'bool'},
+    kbCursor: {default: '[cursor]', type:'selector'},
+    // ^specify what hand can interact with the optional keyboard
   },
   init() {
     // these two lines set up a second canvas used for measuring font width
@@ -88,6 +96,7 @@ AFRAME.registerComponent('console', {
     
     if (!this.data.skipIntroAnimation) this.logoAnimation = this.animateLogo();
     if (this.data.captureConsole) this.grabAllLogs();
+    if (this.data.injectKeyboard) this.injectKeyboardSrc();
   },
   pause() {
     this.isPaused = true;
@@ -153,11 +162,14 @@ AFRAME.registerComponent('console', {
     let useLogo = AFrameLogoHD;
     let trueFontSize = this.data.fontSize;
     return new Promise(async (resolve, reject) => {
+      
+      // run a quick loop to figure out correct font size to display logo properly
       await new Promise((resolve2, reject2) => {
         let logoLineLength = useLogo.split('\n')[2].length;
         let findFontInterval = setInterval(() => {
           if (this.maxLineWidth >= logoLineLength || this.data.fontSize == 1) {
-            console.debug("hit correct font size for logo", this.el.id, this.data.fontSize, this.maxLineWidth, logoLineLength)
+            console.debug(this.data.fontSize > 1 ? "hit correct font size for logo" : "hit minimum font size, seems not big enough", this.el.id, this.data.fontSize, this.maxLineWidth, logoLineLength)
+            // todo: would be nice to just not show broken logo in this case
             clearInterval(findFontInterval);
             resolve2();
             return;
@@ -166,10 +178,11 @@ AFRAME.registerComponent('console', {
           this.el.setAttribute('console','fontSize',this.data.fontSize-1)
         }, 25);
       })
+      
       let logoArray = useLogo.split("\n");
 
       logoArray.forEach((line,i) => {
-        setTimeout( () => {
+        setTimeout(() => {
           this.writeToCanvas(line, this.getNextGradientColor());
           if (i+1 === logoArray.length) {
             setTimeout(() => {
@@ -179,7 +192,8 @@ AFRAME.registerComponent('console', {
                 this.lineQ = [''];
                 this.el.setAttribute('console','fontSize',trueFontSize);
               }
-              this.writeToCanvas('dev@aframe:~$', this.getNextGradientColor()); resolve(); 
+              this.writeToCanvas('dev@aframe:~$', this.getNextGradientColor());
+              resolve(); 
               
               if (this.data.demo) {
                 this.runDemo();
@@ -214,6 +228,59 @@ AFRAME.registerComponent('console', {
   scroll() {
     // todo
   },
+  haveInjectedKeyboardSrc: false,
+  async injectKeyboardSrc() {
+    if (!this.haveInjectedKeyboardSrc) {
+      let srcLoadedResolve;
+      this.haveInjectedKeyboardSrc = new Promise((resolve, reject) => {
+        srcLoadedResolve = resolve;
+      })
+
+      // inject kylebakerio fork of super-keyboard source if first time injecting
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.async = true;
+      script.onload = function() {
+        srcLoadedResolve();
+      }
+      script.src = 'https://cdn.statically.io/gh/kylebakerio/aframe-super-keyboard/master/dist/aframe-super-keyboard.min.js';
+      try {
+        document.getElementsByTagName('head')[0].appendChild(script);
+      } catch (e) {
+        console.error("error injecting keyboard source; perhaps you already load super keyboard? will attempt to continue anyways.")
+        console.error(e);
+      }
+    }
+    await this.haveInjectedKeyboardSrc;
+    // inject keyboard into scene
+    this.superKeyboard = this.superKeyboard || document.createElement('a-entity');
+    this.superKeyboard.id = "a-console-keyboard";
+    // let cursors = document.querySelectorAll('[cursor]'); // note: try ['laser-controls'] if cursor doesn't work 
+    this.superKeyboard.setAttribute('super-keyboard', `hand:${this.data.kbCursor}; value:console.log('hello world'); multipleInputs: true; imagePath: https://cdn.statically.io/gh/kylebakerio/aframe-super-keyboard/master/dist`);
+    this.el.appendChild(this.superKeyboard);
+    this.superKeyboard.setAttribute('position','0 -1.5 0');
+    this.superKeyboard.setAttribute('rotation','-45 0 0');
+    window.addEventListener('superkeyboardinput', (function(event) {
+      this.eval(event.detail.value);
+    }).bind(this));
+  },
+  canEval: null,
+  eval(cmd) {
+    if (this.canEval === null) {
+      try {
+        eval('1');
+        this.canEval = true;
+      } catch(e) {
+        console.error('Error when attempting to eval; you may need to enable it from your server.',e);
+      }
+    }
+    if(this.canEval) {
+      window.eval(cmd);
+    }
+    else {
+      console.error("eval() forbidden, you probably need to add 'unsafe-eval' to your server's content security policy.");
+    }
+  },
   calcTextWidth() {
     this.textCanvasCtx.font = this.ctx.font;
     this.textData = this.textCanvasCtx.measureText('a');
@@ -245,12 +312,11 @@ AFRAME.registerComponent('console', {
       const consoleFuncName = this.data.captureConsole[i];
       const consoleFuncColor = this.data.captureConsoleColors[i];
       const originalFn = console[consoleFuncName];
-      console.debug(consoleFuncName, consoleFuncColor)
       
       console[consoleFuncName] = function() {
         originalFn(...arguments);
         
-        if (consoleComponent.data.captureConsole) {
+        if (consoleComponent.data.captureConsole.includes(consoleFuncName)) {
           const arrayOfArgs = [...arguments];
           let hasStackTrace = false;
           if (consoleComponent.data.captureStackTraceFor.includes(consoleFuncName)) {
@@ -261,7 +327,6 @@ AFRAME.registerComponent('console', {
         }
       };
     }
-    // uncomment this line to fill up the console with timestamps
   },
   addTextToQ(text, color, isStackTrace, reflow) {
     if (!reflow) {
@@ -283,9 +348,13 @@ AFRAME.registerComponent('console', {
           }
         }
       })
+    } else {
     }
 
     if (!reflow && this.rawInputs.length > this.data.history) {
+      // if reflow, skip this
+      // otherwise,
+      // if inputs is bigger than history limit, remove oldest
       this.rawInputs.shift();
     }
   },
@@ -301,9 +370,9 @@ AFRAME.registerComponent('console', {
   async logToCanvas(arrayOfArgs, color, hasStackTrace) {
     if (this.isPaused) return; // don't capture logs while paused
     let logString = "";
-    arrayOfArgs.reduce((logString, arg, i) => {
+    logString = arrayOfArgs.reduce((logString, arg, i) => {
       if (i === arrayOfArgs.length-1 && hasStackTrace) {
-        return logString;
+        return logString; // in other words, skip, because we send it as a separate input
       }
       else if (typeof arg !== "string") {
         logString += this.stringify(arg);
@@ -311,6 +380,7 @@ AFRAME.registerComponent('console', {
       else {
         logString += arg;
       }
+      return logString;
     }, "");
     await this.logoAnimation; // capture logs during animation, but don't display until after animation
     this.writeToCanvas(logString, color, false);
@@ -318,7 +388,7 @@ AFRAME.registerComponent('console', {
       this.writeToCanvas(arrayOfArgs[arrayOfArgs.length-1], color, true)
     }
   },
-  writeToCanvas(text="", color=this.data.textColor, isStackTrace=false) {
+  writeToCanvas(text="", color=this.data.textColor, isStackTrace=false) {    
     if (text) this.addTextToQ(text, color, isStackTrace, false);
     this.refreshBackground();
     this.ctx.font = `${this.data.fontSize}px ${this.data.fontFamily}`;
@@ -340,86 +410,6 @@ AFRAME.registerComponent('console', {
     this.ctx.fillRect(0, 0, this.data.canvasWidth, this.data.canvasHeight)
   }
 });
-
-const AFrameLogo1 = `PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5YJ??YPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5YJ???????PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPYJ???????????YPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5~~????????????5PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP~Y?!???????????YGPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP!?PP!????????????#&&GPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP?!PPPJ!???????????5@@GPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPY~5PPPP!7???????????B#PPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPP5~YPPPPGP!????????????5PPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPP!JPGB#&&&J7???????????YPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPP7!G#&&&&&&#!????????????PPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPJJY55Y7!YJY5B#&&&&5!????????????J5JJY5PPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPP5!!YY7!~5PPY?!!?5B&&7????????????77!!Y5PPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPP5YJ?!!J?7~JY?7!!!!!~~!J?!????????????7!!JJ?JY5PPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPY?77777!!7777!!!!!!!777!!!~????????????77!!77777?YPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPP5Y?77777777777777!!7JY?!!~!????????????777777?Y5PPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPP5J?77777777777!~75?!!!~7????????77777?J5PPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPP5YJ?77777777!7?77!!!~????77777?JY5PPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPP5YJ?77777!!77777!77777?JY5PPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5Y?777777777777?Y5PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5J?7777?J5PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP5YY5PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
-PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP`
-
-const AFrameLogo2 = `
-                                                                                
-           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~:            
-           :~~~~~~7?~~~~~~~~7???!~7?7?7~~~~?7~~~~J!~~!J~~~???7~~~~~:            
-           :~~~~~!YY7~~~~~~~Y?~!~~Y?~~57~~7Y5!~~!PY~~YG7~!P!!!~~~~~:            
-           :~~~~~57!P~~7??!~YY77~~YY?5?~~!5!?5~~?J?J???J~!P??!~~~~~:            
-           :~~~~JY77JY~~~~~~Y7~~~~Y?~?Y!~5?77YJ~Y7~YY~75~!P!!!~~~~~:            
-           :~~~~7~~~~7~~~~~~7!~~~~7!~~77!7~~~~7~7!~~~~~7~~????~~~~~:            
-           :^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^:            
-                                                                                
-                                                                                
-                                              .                                 
-                                          .:^~~^          .^?P57:               
-                                      ..^~~~~~~~.     .^?5BBBBBBBGY!:           
-                                   .^~~~~~~~~~~~~   .YGBBBBBBBBBBBBBBGY!.       
-                                :~~~~~~~~~~~~~~~~:  :PPPPGGBBBBBBBBBBBBBBGY^    
-                               :^~~~~~~~~~~~~~~~~~   .^7YPPPPGGBBBBBBBBB#&&Y    
-                              :??^~~~~~~~~~~~~~~~~:      .^7YPPPPGBB##&#BY~.    
-                             .!55~~~~~~~~~~~~~~~~~~          .^?YPB#B5!.        
-                            .~555J:~~~~~~~~~~~~~~~~^             .~:            
-                            ^Y5555~^~~~~~~~~~~~~~~~~.                           
-                           :JP5555Y:~~~~~~~~~~~~~~~~^                           
-                          .7P555555!^~~~~~~~~~~~~~~~~.                          
-                         .!5555555PP^~~~~~~~~~~~~~~~~~                          
-                        .^5555PGB#&&Y^~~~~~~~~~~~~~~~~:                         
-                        ^YPGB#&&&&&&#~~~~~~~~~~~~~~~~~~                         
-                       :!G#&&&&&&&&&&P^~~~~~~~~~~~~~~~~:                        
-             .^~:    ..!J77JPB&&&&&&&&!^~~~~~~~~~~~~~~~~.    :~^.               
-             !!?Y?:^~^~5PP5Y?~!JG#&&&&G:~~~~~~~~~~~~~~~~!~^:~!7YY               
-             ~~?YY!!^^YP5YJ7!~^^^^!YB&&57!~~~~~~~~~~~~~~~!!!~~!YY.              
-          .:~~~7?7!~:?J7!~^^~~~~!7YPB##&#BGY7!~~~~~~~~~~~~!~~~!J?~:.            
-      .:^~!!~~~!~~~~~!~~~~~~~7YPB############BPJ7~~~~~~~~~!!~~!~~~!!~~:.        
-      :^~!!~~~~~~~~~~~~~~~~~~5GGB################B5?!~~~~~~!~~~~~~~!!~^:        
-         .:^~!!~~~~~~~~~~~~~~Y555PGB##############&&&J~~~~~!!~~!!~^:.           
-             .:~~!~~~~~~~~~~~!7?Y5PPPPGBB######&&&&@@J~~~~~!!~~:.               
-                 .^~!!~~~~~~~~~~~!JY5555PPGB&&&@@&&B5!~!!!~^.                   
-                    .:^~!!~~~~~~~~7~~!?J555B@&&BP?!~~!~^:.                      
-                        .:~~!~~~~~~~~~~~!7?5PJ!~~!~~:.                          
-                            .^~!!~~~~~~~~~~~~~!~^.                              
-                               .:^~!!~~~~!!~^:.                                 
-                                   .:~~~~:.                                     
-                                                                                
-                                                                                
-                                                                                 `
 
 const AFrameLogoHD = `
 MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
@@ -543,29 +533,3 @@ MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
 const logoGradient = ["#0501fa","#0a02f5","#0f03f0","#1404eb","#1905e6","#1e06e1","#2307dc","#2808d7","#2d09d2","#320acd","#370bc8","#3c0cc3","#410dbe","#460eb9","#4b0fb4","#5010af","#5511aa","#5a12a5","#5f13a0","#64149b","#691596","#6e1691","#73178c","#781887","#7d1982","#821a7d","#871b78","#8c1c73","#911d6e","#961e69","#9b1f64","#a0205f","#a5215a","#aa2255","#af2350","#b4244b","#b92546","#be2641","#c3273c","#c82837","#cd2932","#d22a2d","#d72b28","#dc2c23","#e12d1e","#e62e19","#eb2f14","#f0300f","#f5310a","#fa3205"];
 const fullScreenGradient = ["#0301fc","#0501fa","#0802f7","#0b02f4","#0d03f2","#1003ef","#1204ed","#1504ea","#1805e7","#1a05e5","#1d06e2","#2006df","#2207dd","#2507da","#2708d8","#2a08d5","#2d09d2","#2f09d0","#320acd","#350bca","#370bc8","#3a0cc5","#3c0cc3","#3f0dc0","#420dbd","#440ebb","#470eb8","#4a0fb5","#4c0fb3","#4f10b0","#5110ae","#5411ab","#5711a8","#5912a6","#5c12a3","#5f13a0","#61139e","#64149b","#671598","#691596","#6c1693","#6e1691","#71178e","#74178b","#761889","#791886","#7c1983","#7e1981","#811a7e","#831a7c","#861b79","#891b76","#8b1c74","#8e1c71","#911d6e","#931d6c","#961e69","#981e67","#9b1f64","#9e2061","#a0205f","#a3215c","#a62159","#a82257","#ab2254","#ae2351","#b0234f","#b3244c","#b5244a","#b82547","#bb2544","#bd2642","#c0263f","#c3273c","#c5273a","#c82837","#ca2835","#cd2932","#d02a2f","#d22a2d","#d52b2a","#d82b27","#da2c25","#dd2c22","#df2d20","#e22d1d","#e52e1a","#e72e18","#ea2f15","#ed2f12","#ef3010","#f2300d","#f4310b","#f73108","#fa3205","#fc3203"]
 // from: https://codepen.io/BangEqual/pen/VLNowO
-
-// AFRAME.registerComponent('live-canvas', {
-//   dependencies: ['geometry', 'material'],
-//   schema: {
-//     src: { type: "string", default: "#id"}
-//   },
-//   init() {
-//     if (!document.querySelector(this.data.src)) {
-//       console.error("no such canvas")
-//       return
-//     }
-//     this.el.setAttribute('material',{src:this.data.src})
-//   },
-//   tick() {
-//     var el = this.el;
-//     var material;
-
-//     material = el.getObject3D('mesh').material;
-//     if (!material.map) { 
-//       console.error("no material map")
-//       this.el.removeAttribute('live-canvas')
-//       return; 
-//     }
-//     material.map.needsUpdate = true;
-//   }
-// });

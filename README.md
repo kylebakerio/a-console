@@ -58,7 +58,8 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     "font-family": 'console.fontFamily',
     "text-color": 'console.textColor',
     "background-color": 'console.backgroundColor',
-    
+    // ppcm: 'console.pixelsPerCentimeter',
+    // side: 'material.side',
     'pixel-width': 'console.canvasWidth',
     'pixel-height': 'console.canvasHeight', 
     // pixel-height not necessary or looked at unless allow-custom-aspect-ratio is true 
@@ -66,13 +67,17 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     
     'skip-intro': 'console.skipIntroAnimation',
     'font-size': 'console.fontSize',
-    // unit is 'px', supply number
-
-    // specify how much history to store
-    history: 'console.history',
+    // always in 'pixels' (px), supply '18' to get '18px' 
     
+    // specify how many input entries to save for resizing/scrolling
+    history: 'console.history',
+    'capture-console': 'console.captureConsole',
+
+    // fill screen with colored timestamps
     demo: 'console.demo',
-    // fill screen with gradient colored timestamps
+    
+    'inject-keyboard': 'console.injectKeyboard',
+    'use-cursor': 'console.kbCursor',
   }
 }));
 
@@ -98,27 +103,37 @@ AFRAME.registerComponent('console', {
     pixelRatioOverride: {default: false, type: 'bool'},
     
     captureConsole: {default: ['log','warn','error'], type: 'array'},
+    // ^could also specify debug, info
     captureConsoleColors: {default: ["",'yellow','red'], type: 'array'},
     captureStackTraceFor: {default: ['error'], type:'array'},
     showStackTraces: {default: true, type:'bool'},
     
     skipIntroAnimation: {default: false, type: 'bool'},
     introLineDelay: {default: 75, type:'number'},
+    keepLogo: {default: false, type:'bool'},
     demo: {default: false, type: 'bool'},
+    
+    injectKeyboard: {default: false, type: 'bool'},
+    kbCursor: {default: '[cursor]', type:'selector'},
+    // ^specify what hand can interact with the optional keyboard
   },
 ```
 
 Check out index.html for some examples.
 
-## roadmap
-  - ability to manually scroll, not just auto-scroll
-  - inclusive/exclusive filter
-  - allow JSON stringify custom settings
+## roadmap: coming soon
+
+### designed with this in mind, just needs interface added to enable
+  - ability to manually scroll, not just auto-scroll (was designed with this idea in mind, should be very easy to implement)
+  - inclusive/exclusive filter                       
   - make stack traces toggle/revealable
-  - keyboard for console input
-  - `eval()` option to run commands on the fly from inside VR
-  - support for native console text inline colors
-  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console)
-  - per-line font size
-  - rolling-character effect 
-  - single-page mode
+  - per-line font size (would be very easy to implement, but low priority, not sure anyone would use this feature)
+
+### keyboard that can `eval()` commands typed from inside VR
+this is 99% done... only thing needed is a custom aframe-super-keyboard layout that supports the symbols needed for code. At the moment, the only thing it would be good for is if you design your code to assign a value to a global, and you want to lookup that value--but that's not super helpful, as there's far more efficient ways to do that, the point of this functionality would be to run commands with side effects or lookup things you didn't plan on looking up on the fly, of course.
+
+## roadmap: maybe, pull request welcome
+  - support for native console text inline colors (currently design to only allow color-per-input, would probably just need to add a flag that allows inputs to be chained without newlines along with color string processing)
+  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console) (debug and info should 'just work')
+  - single-page mode (so, instead of adding to history, a way to keep modifying the visible lines, enabling text-GUI stuff a-la HTOP, etc.) (easy to implement with current design, but probably no demand for it)
+  - allow JSON stringify custom settings (not hard to implement, probably no demand for it)
