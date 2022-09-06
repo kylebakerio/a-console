@@ -99,7 +99,7 @@ AFRAME.registerComponent('console', {
     // supply a selector that emits thumbstickmoved events to scroll with it
     thumbstickScrolling: {default: '', type: 'selector'}
   },
-  init() {
+  async init() {
     // these two lines set up a second canvas used for measuring font width
     this.textSizeCanvas = document.createElement("canvas");
     this.textCanvasCtx = this.textSizeCanvas.getContext("2d");
@@ -116,10 +116,12 @@ AFRAME.registerComponent('console', {
     this.el.setAttribute('material', 'src', `#${this.canvas.id}`); // TODO: may need to set as ID of canvas instead, check that this works
     
     if (!this.data.skipIntroAnimation) this.logoAnimation = this.animateLogo();
+    await this.logoAnimation;
     if (this.data.captureConsole) this.grabAllLogs();
     if (this.data.injectKeyboard) this.injectKeyboardSrc();
     if (this.data.keyboardEventsInput) this.listenForKeyboardEvents();
     if (this.data.thumbstickScrolling) this.addThumbstickScrolling();
+    if (this.data.demo) this.runDemo();
   },
   pause() {
     this.isPaused = true;
@@ -129,11 +131,11 @@ AFRAME.registerComponent('console', {
   },
   addThumbstickScrolling() {
     this.data.thumbstickScrolling.addEventListener('thumbstickmoved', evt => {
-      console.info(evt.detail.y)
       this.thumbstickY = evt.detail.y;
     })
   },
   thumbstickY: 0,
+  lastCursorBlinkTimestamp: 0,
   tick() {
     // thumbstick scrolling
     if (this.thumbstickY < -.3) {
@@ -143,7 +145,9 @@ AFRAME.registerComponent('console', {
       this.scroll("down");
     }
     // blinking cursor
-    if (Date.now() % 500 > 0 && Date.now() % 500 < 15) {
+    let now = Date.now();
+    if (now - this.lastCursorBlinkTimestamp > 500) {
+      this.lastCursorBlinkTimestamp = now;
       this.writeToCanvas();
     }
   },
@@ -264,12 +268,7 @@ AFRAME.registerComponent('console', {
                 this.lineQ = [''];
                 this.el.setAttribute('console','fontSize',trueFontSize);
               }
-              this.writeToCanvas('dev@aframe:~$', this.getNextGradientColor());
               resolve(); 
-              
-              if (this.data.demo) {
-                this.runDemo();
-              }
             }, 1000)
           }
         }, i*this.data.introLineDelay)
@@ -279,23 +278,26 @@ AFRAME.registerComponent('console', {
   getNextGradientColor:(() => {
     let counter = 1;
     let up = true;
-    return function() {
+    return function(n=1) {
       if (fullScreenGradient[counter+1] && counter !== 0) {
-        up ? counter++ : counter--;
+        up ? counter+=n : counter-=n;
       } else {
-        up = !up; up ? counter++ : counter--;
+        up = !up; up ? counter+=n : counter-=n;
+      }
+      if (!fullScreenGradient[counter]) {
+        counter = 1;
+        up = true;
       }
       return fullScreenGradient[counter];      
     } 
   })(),
-  runDemo() {
+  async runDemo() {
+    await this.logoAnimation;
     let theLine = "";
     this.demoInterval = setInterval(() => {
-        theLine = theLine.length < 1000 ? 
-          theLine + JSON.stringify(new Date()) : 
-          JSON.stringify(new Date()); 
+        theLine = Date.now() + "";
         this.writeToCanvas(theLine, this.getNextGradientColor())
-    }, Math.random() * 150);
+    }, Math.random() * 1050);
   },
   commandBuffer: "",
   listeningForKeyboardEvents: false,
@@ -370,17 +372,18 @@ AFRAME.registerComponent('console', {
         el.components.position.data[dimension] = value;
         el.setAttribute('position',el.components.position.data)
       },
-      help() {
+      help: (function() {
         console.log(`
   built in helpers:
-   keys:
+%c   keys:%c
    ---------
+    thumbstick (if configured): scroll console
     pgUp/Dn: scroll console
     arrowUp/Down: scroll inputs history
     arrowLeft/Right: move input cursor
     delete: clear input field
-
-   misc:
+    
+%c   misc:%c
    ----------
     ac.ok(x) = Object.keys(x);
     ac.opt(attr,val) = <consoleEl>.setAttribute('console',attr,val)
@@ -390,8 +393,8 @@ AFRAME.registerComponent('console', {
      (try \`ac.comp('console').data\` to see list of attributes you can modify)
     help      -> show this text
     ac.help() -> show this text
-  
-   console:
+    
+%c   console:%c
    -----------
     ac.c = console
     ac.cl(msg) = console.log(msg)
@@ -399,15 +402,15 @@ AFRAME.registerComponent('console', {
     ac.logAll -> bool, default true; when true, logs output of all executed commands
     ac.skipUndefined -> bool, default true; when true, ignores undefined return values
     
-   document:
+%c   document:%c
    ------------------
     ac.d =  window.document
     ac.qs(selector) = document.querySelector(selector)
     ac.id(id) = document.getElementById(id)
     ac.qsa(selector) = [...document.querySelectorAll(selector)]
     ac.qsal(selector) = ac.qsa(selector).map(el => <el's tag, id, classes, combined as string>)
-
-   element (create, append):
+    
+%c   element (create, append):%c
    -------------------------
     ac.el(tag, attributes, children) -> create an element
       example:
@@ -415,11 +418,10 @@ AFRAME.registerComponent('console', {
     ac.app(child, parent) -> append child el to parent el
       example:
        let newEl = ac.el('a-sphere',{position:'0 1 -2'})
-       ac.app(newEl) // note: default parent is scene if not specified
+       ac.app(newEl) // (default parent is scene if not specified)
       this will create a sphere and append it to the scene
       
-      
-   aframe specific:
+%c   aframe specific:%c
    -----------------
     ac.comp(compName) = document.querySelector('[compName]').components[compName]
       good for when only one el has a given component you want to directly inspect/use
@@ -427,15 +429,17 @@ AFRAME.registerComponent('console', {
       example:
        ac.attr('#tv','position','z',2) // set z to 2
       if last argument not supplied, will get instead of set
-       ac.attr('#tv','position',z)     // return document.querySelector('#tv').components.position.data.z
+       ac.attr('#tv','position',z)     // document.querySelector('#tv').components.position.data.z
     ac.move(selector,dimension,amount)
       adjusts position dimension by given amount
     ac.moveTo(selector,dimension,value)
       sets position dimension to exact value
-`)
-      }
+`,
+`color: ${this.getNextGradientColor(30)}`,'color: inherit',`color: ${this.getNextGradientColor(30)}`,'color: inherit',`color: ${this.getNextGradientColor(30)}`,'color: inherit',`color: ${this.getNextGradientColor(30)}`,'color: inherit',`color: ${this.getNextGradientColor(30)}`,'color: inherit',`color: ${this.getNextGradientColor(30)}`,'color: inherit'
+)
+      }).bind(this)
     }
-    window.ac.help();
+    setTimeout(() => window.ac.help(),0)
   },
   scroll(dir) {
     if (dir === "down") {
@@ -477,7 +481,7 @@ AFRAME.registerComponent('console', {
             return;
           }
           this.commandOffset -= this.commandOffset === 0 ? 0 : 1;
-          console.info("offset after down:",this.commandOffset)
+          // console.info("offset after down:",this.commandOffset)
           let historyInput = this.commandHistory[this.commandHistory.length -(1+this.commandOffset)];
           this.renderCommandBuffer(historyInput[0], historyInput[1]);
           this.commandBuffer = historyInput[0];
@@ -709,19 +713,18 @@ AFRAME.registerComponent('console', {
   commandBufferFormatted: [],
   rawInputNewlines(text) {
     let output = [];
-    try {
-      text.split('\n').forEach(newLine => {
-        for (let i = 0; i < newLine.length / this.maxLineWidth; i++) {
-          let maxLengthSegment = newLine.slice(i*this.maxLineWidth, (i*this.maxLineWidth) + this.maxLineWidth);
-          output.push(maxLengthSegment);
-        }
-      })
-    } catch(e) {
-      debugger
-    }
+    text.split('\n').forEach(newLine => {
+      for (let i = 0; i < newLine.length / this.maxLineWidth; i++) {
+        let maxLengthSegment = newLine.slice(i*this.maxLineWidth, (i*this.maxLineWidth) + this.maxLineWidth);
+        output.push(maxLengthSegment);
+      }
+    })
     return output
   },
   addTextToQ(text, color, isStackTrace, reflow, sameLine=false) {
+    if (typeof text !== "string") {
+      throw new Error("can only write string to canvas")
+    }
     if (!reflow) {
       this.rawInputs.push({
         text,
@@ -764,9 +767,10 @@ AFRAME.registerComponent('console', {
     const isFormattedLogInput = arrayOfArgs.reduce((memo,item) => typeof item !== "string" ? false : item.includes('%c') || memo, false);
     if (isFormattedLogInput) {
       let texts = arrayOfArgs[0].split("%c");
-      let styles = [""].concat(arrayOfArgs.slice(1).map(str => str.split("color: ")[1]));
+      let styles = [""].concat(arrayOfArgs.slice(1).map(str => str.split("color:")[1]));
       texts.forEach((text,i) => {
         let color = styles[i].includes("inherit") ? this.data.textColor : styles[i];
+        // console.info([color,text]);
         this.writeToCanvas(text,color,false,true)
       })
       // pass in multiple separate stylelized lines
@@ -830,7 +834,7 @@ AFRAME.registerComponent('console', {
         this.ctx.fillStyle = lines[i][1];
         this.ctx.fillText( lines[i][0], lineX, lineY );
     }
-    if (lines.length && this.scrollOffset === 0) {
+    if (lines.length && this.scrollOffset === 0 && this.data.keyboardEventsInput) {
       let cursorX = ((lines[lines.length-1][0].length - this.inputCursorOffset) * this.fontWidth) - 5;
       let cursorY = this.data.fontSize + (this.data.fontSize * yLines) + 4;
       this.ctx.fillStyle = this.data.inputColor;

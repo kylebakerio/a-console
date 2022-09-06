@@ -2,35 +2,35 @@
 <html>
   <head>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/a-super-sky@1.1.1/super-sky.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.1/dist/aframe-environment-component.min.js"></script>
     <script src="a-console.js"></script>
   </head>
   <body>
     <a-scene>
+      <a-entity environment="skyType:none; lighting:none; "></a-entity>
+      <a-light type="point" position="0 2.129 2.501"></a-light>
+      <a-super-sky 
+          cycleduration="1"
+          groundcolor="#7BC8A4"
+      ></a-super-sky>
+
       <a-assets>
           <canvas crossorigin="anonymous" id="mycanvas" width="512" height="512"></canvas>
       </a-assets>
       <a-box position="-1 0.5 -3" rotation="0 45 0" color="#4CC3D9"></a-box>
       <a-sphere position="0 1.25 -5" radius="1.25" color="#EF2D5E"></a-sphere>
       <a-cylinder position="1 0.75 -3" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
-      <!--    any plane into a console by adding this component   -->
-      <!--    console="captureConsole:''; keepLogo: true;"     -->
-      <a-plane position="0 0 -4" rotation="-90 0 0" width="4" height="4" color="#7BC8A4"></a-plane>
-      <a-sky color="blue"></a-sky>
-      
-      <!--    default screen is a 2k 16:10 oriented vertically, if nothing is specified    -->
-<!--       <a-console demo="true" id="defaultconsole" position="-.8 1.2 -1" rotation="0 45 0 "></a-console> -->
-      
-      <a-entity  id="tv" position="0 1.5 -1.5" rotation="0 180 0" scale=".4 .4 .4" gltf-model="https://cdn.glitch.global/a15b6fb5-a57c-41b9-aabf-19db2295bca3/tv.glb?v=1661260066264">
-        <a-console skip-intro="true" demo="false" keyboard-events="true" inject-keyboard="false" id="tvconsole" height="2.24" font-size="34" width="3.91" pixel-width="2160" position="0.198 -0.197 -0.518" rotation="0 180 0"></a-console>
+
+      <a-entity  id="tv" position="-1.45 1.65 -1.8" rotation="0 225 0" scale=".4 .4 .4" gltf-model="https://cdn.glitch.global/a15b6fb5-a57c-41b9-aabf-19db2295bca3/tv.glb?v=1661260066264">
+        <a-console thumbstick-scrolling="#left-hand" skip-intro="false" demo="false" keyboard-events="true" inject-keyboard="false" id="tvconsole" height="2.24" font-size="34" width="3.91" pixel-width="2160" position="0.198 -0.197 -0.518" rotation="0 180 0"></a-console>
       </a-entity>
 
-              <!--    this would be a 1200p screen since the geometry is specified at a 16:10 ratio, the vertical pixels will automatically be set as  1200 pixels    -->
-<!--       <a-console id="wideconsole" width="1.6" height="1.0" pixel-width="1920" position="0 0 -.518" rotation="0 180 0" scale="2 2 2"></a-console> -->
-      
-      <a-entity laser-controls="hand:right">
+      <a-entity id="left-hand" hand-controls="hand:left"></a-entity>
+      <a-entity id="right-hand" laser-controls="hand:right">
         <!--     we can attach a mini terminal to our controller to walk around with, too     -->
-        <a-entity gltf-model="https://cdn.glitch.global/a15b6fb5-a57c-41b9-aabf-19db2295bca3/PHONE.glb?v=1661260070295"  position="-0.144 0 0.083" rotation="-12 18 0" scale=".03 .03 .03">
-          <a-console demo="false" id="hand-console" height=".5" width=".25" pixel-width="720" font-size="35" background-color="black" text-color="orange" scale="10 10 10" position="3.637 2.910 -1.75"></a-console>
+        <a-entity gltf-model="https://cdn.glitch.global/a15b6fb5-a57c-41b9-aabf-19db2295bca3/PHONE.glb?v=1661260070295"  position="0.055 0 0.083" rotation="-12 18 90" scale=".03 .03 .03">
+          <a-console thumbstick-scrolling="#right-hand" id="hand-console" height=".25" width=".5" pixel-width="720" font-size="20" background-color="black" text-color="limegreen" scale="10 10 10" rotation="0 0 -90" position="3.637 2.910 -1.75"></a-console>
         </a-entity>
       </a-entity>
     </a-scene>

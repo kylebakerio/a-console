@@ -39,21 +39,39 @@ _Also: check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats)
 https://canvas-log.glitch.me/
 
 ## how-to
-Literally just add this line to your scene:
+By default it will intercept console.log/warn/error, and print stack traces on error. You can also manually print to the console with the `writeToCanvas()` method.
+For the basic use case, literally just add this line to your scene:
+
 ```html
 <a-console position="0 1.5 -2"></a-console>
 ```
 
-I like to add it to my hand so I can walk around with it in VR:
+You can easily attach it to your controller if you like:
 ```html
-<a-entity id="my-tracked-left-hand" class="local-hand"  oculus-touch-controls="hand:left;">
-  <a-console font-size="35" position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
+<a-entity id="left-hand" class="local-hand"  laser-controls="hand:left;">
+  <a-console thumbstick-scrolling="#left-hand" font-size="35" position="0 .13 -.36" scale=".33 .33 .33" rotation="-70.7 -1.77"></a-console>
 </a-entity>  
 ```
+Notice the thumbstick-scrolling option. By supplying the selector for an entity that emits `thumbstickmoved` events, those events then get picked up and used to scroll through console history
   
-by default it will intercept console.log/warn/error, and print stack traces on error. you can also manually print to the console with the `logToCanvas()` and `writeToCanvas()` methods. (They do _not_ currently run commands, just allow you to print text.)
+If you want to connect a keyboard and type input to the console, just add `keyboard-events="true"`:
+```html
+<a-console keyboard-events="true" position="0 1.5 -2"></a-console>
+```
 
-## options
+Modifying the height/width/resolution/font size are all easy and will all be easily handled:
+```html
+<a-console height="2.24" font-size="34" width="3.91" pixel-width="2160" position="0 1.5 -2"></a-console>
+```
+I suggest you do it like this:
+- set the height/width you want
+- set the screen resolution width pixel-width
+- pixel-height is manually set according to pixel-width proportional based on geometry; if you for some reason want to override that and don't want square pixels, see the code)
+- lastly, set font-size as needed depending on how close you are going to be to it when viewing and how important fitting horizontal lines without line breaks are to you
+
+You can ignore these settings and just get a basic panel with decent defaults, or fit it into your world wherever you like. It's recommended you attach it to a controller rather than your head if you want to bring it around with you, though.
+
+## All options
 - **I always advise that you check the schema for up-to-date options.**
 - **always check the update() function, it may be that some settings only work on init()**
 ```js
@@ -67,12 +85,12 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
   mappings: {
     height: 'geometry.height',
     width: 'geometry.width',
-    "font-size": 'console.fontSize',
+    'font-size': 'console.fontSize',
     
     // font-family MUST be a monospace font, or expect things to break :)
-    "font-family": 'console.fontFamily',
-    "text-color": 'console.textColor',
-    "background-color": 'console.backgroundColor',
+    'font-family': 'console.fontFamily',
+    'text-color': 'console.textColor',
+    'background-color': 'console.backgroundColor',
     // side: 'material.side',
     'pixel-width': 'console.canvasWidth',
     'pixel-height': 'console.canvasHeight', 
@@ -84,18 +102,20 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     // always in 'pixels' (px), supply '18' to get '18px' 
     
     // specify how many input entries to save for resizing/scrolling
-    history: 'console.history',
+    'history': 'console.history',
+    // by default includes log/warn/error, but you could specify that you
+    // only want errors if desired by setting this to ='error'
     'capture-console': 'console.captureConsole',
 
     // fill screen with colored timestamps
-    demo: 'console.demo',
+    'demo': 'console.demo',
 
-    // inject 3d virtual keyboard
+    // inject 3d virtual keyboard (current iteration lacks symbols, only has letters+numbers)
     'inject-keyboard': 'console.injectKeyboard',
     // which cursor to use to select keys on the virtual keyboard
     'use-cursor': 'console.kbCursor',
 
-    // accept keyboard events themselves
+    // accept actual keyboard events themselves (e.g. from bluetooth keyboard)
     'keyboard-events': 'console.keyboardEventsInput',
 
     'thumbstick-scrolling': 'console.thumbstickScrolling',
@@ -155,20 +175,10 @@ AFRAME.registerComponent('console', {
 
 Check out index.html for some examples.
 
-## roadmap: coming soon
-
-### designed with this in mind, just needs interface added to enable
-  - ability to manually scroll, not just auto-scroll (was designed with this idea in mind, should be very easy to implement)
+## further things that I might add or accept pull requests for:
   - inclusive/exclusive filter                       
   - make stack traces toggle/revealable
   - per-line font size (would be very easy to implement, but low priority, not sure anyone would use this feature)
-
-### keyboard that can `eval()` commands typed from inside VR
-this is 99% done... only thing needed is a custom aframe-super-keyboard layout that supports the symbols needed for code. At the moment, the only thing it would be good for is if you design your code to assign a value to a global, and you want to lookup that value--but that's not super helpful, as there's far more efficient ways to do that, the point of this functionality would be to run commands with side effects or lookup things you didn't plan on looking up on the fly, of course.
-
-## roadmap: maybe, pull request welcome
-  - support for native console text inline colors (currently design to only allow color-per-input, would probably just need to add a flag that allows inputs to be chained without newlines along with color string processing)
-    - actually, should probably utilize this more in depth and possibly get full range of css expression: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/font
-  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console) (debug and info should 'just work')
+  - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console) (debug and info should 'just work' if you add them in settings)
   - single-page mode (so, instead of adding to history, a way to keep modifying the visible lines, enabling text-GUI stuff a-la HTOP, etc.) (easy to implement with current design, but probably no demand for it; did something similar with keyboard support)
   - allow JSON stringify custom settings (not hard to implement, probably no demand for it)
