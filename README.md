@@ -1,15 +1,30 @@
 # a-console
 A better, canvas-based console for A-Frame. Currently in 'alpha', but should already be the best thing out there. 
 
-- Prints all logs to a virtual 16:10 2k vertically oriented screen by default
-- Handles any custom screen size you want, with any font size you want--just set geometry and pixel-width resolution
-- Prints stack traces for errors by default
-- Handles line breaks for lines that are too wide, and auto-scrolls on new input
-- Stringifies and pretty-prints objects that are console-logged
-- fully supported text reflowing for dynamic screen resolution updates, font size updates, and geometry updates
-- no memory leaks, store a flexible, fixed amount of history
+### Viewing live logs
 - Developed for A-Frame 1.3.0
+- **Scroll through console history using thumbstick events**
+- Prints all logs to a virtual 16:10 2k vertically oriented screen by default
+- But, **handles any custom screen size you want, with any font size you want**--just set geometry and pixel-width resolution
+- **Prints stack traces** for errors by default; green for log, yellow for warn, red for error by default
+- Handles line breaks for lines that are too wide, auto-scrolls on new input, handles font and screen resizing smoothly
+- Full automatic text reflowing for dynamic screen resolution updates, font size updates, and geometry updates
+- **Stringifies and pretty-prints objects** that are console-logged; when not able to (circular, etc.), prints object's keys
+- Uses HTML Canvas as a texture under the hood to minimize draw call strain, and only stores last 2000 entries to prevent memory leak from logging
+- Correctly parses color-interpolated console strings used by A-Frame core (e.g., logs you see like `core:warn blah blah` where `core:warn` is orange)
+- However, _lots_ of array/object/string churn, so this will impact garbage collection--intended for dev purposes, so that wasn't a priority for v1
 
+### Live coding
+- **Hook up your keyboard** and TYPE! (btw: Quest 2 accepts generic bluetooth keyboard, and they work with this!)
+- Auto-log return values, ignoring undefined
+- Store command history, which you access by using up/down arrows just like a 'real' console
+- Left/Right arrows act as a cursor to edit your text; Home/End also supported to jump to beginning/end
+- Smooth scroll through console with pgup/pgdn
+- Stores input history between sessions! Your long typed out commands persist between sessions.
+- Includes number of built-in helpers to make working with your virtual world much smoother, just type `help`
+
+### Virtual keyoard
+- While technically you can inject a `superkeyboard` and use it with the console, the default super keyboard lacks keys for symbols needed to write code. Pull request welcome to add a custom keyboard! That said, coding is much nicer on a real keyboard, so I recommend using a bluetooth keyboard anyways.
 
 <a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
 
@@ -58,7 +73,6 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
     "font-family": 'console.fontFamily',
     "text-color": 'console.textColor',
     "background-color": 'console.backgroundColor',
-    // ppcm: 'console.pixelsPerCentimeter',
     // side: 'material.side',
     'pixel-width': 'console.canvasWidth',
     'pixel-height': 'console.canvasHeight', 
@@ -75,12 +89,18 @@ AFRAME.registerPrimitive('a-console', extendDeep({}, meshMixin, {
 
     // fill screen with colored timestamps
     demo: 'console.demo',
-    
+
+    // inject 3d virtual keyboard
     'inject-keyboard': 'console.injectKeyboard',
+    // which cursor to use to select keys on the virtual keyboard
     'use-cursor': 'console.kbCursor',
+
+    // accept keyboard events themselves
+    'keyboard-events': 'console.keyboardEventsInput',
+
+    'thumbstick-scrolling': 'console.thumbstickScrolling',
   }
 }));
-
 
 AFRAME.registerComponent('console', {
   dependencies: ['geometry', 'material'],
@@ -88,6 +108,8 @@ AFRAME.registerComponent('console', {
     fontSize: {default: 20, type: 'number'},
     fontFamily: {default: 'monospace', type: 'string'},
     textColor: {default: 'green', type: 'color'},
+    inputColor: {default: 'white', type: 'color'},
+    returnColor: {default: 'orange', type: 'color'},
     backgroundColor: {default: 'black', type: 'color'},
     
     // how much historical input to store
@@ -95,9 +117,9 @@ AFRAME.registerComponent('console', {
     
     // canvas dimensions corresponsd to screen resolution, geometry to screen size.
     // 2560x1600 = 2k 16:10 ratio screen, vertically.
-    // note that geometry will override this setting, and only width will be observed,
+    // note that specified geometry will override this setting, and only width will be observed,
     // unless pixelRatioOverride = true, to keep pixels square by default, and allow
-    // resizing screen without it affecting pixels by default
+    // resizing screen without distortion.
     canvasWidth: {default: 1600, type: 'number'},
     canvasHeight: {default: 2560, type: 'number'}, 
     pixelRatioOverride: {default: false, type: 'bool'},
@@ -113,9 +135,21 @@ AFRAME.registerComponent('console', {
     keepLogo: {default: false, type:'bool'},
     demo: {default: false, type: 'bool'},
     
+    // inject aframe-super-keyboard
+    // note: default keyboard lacks symbols needed for most code stuff
+    // pull request for custom keyboard with symbols is welcome!
     injectKeyboard: {default: false, type: 'bool'},
     kbCursor: {default: '[cursor]', type:'selector'},
-    // ^specify what hand can interact with the optional keyboard
+    // ^specify raycaster that can interact with the VR keyboard
+    
+    // use events from physical keyboard:
+    keyboardEventsInput: {default: false, type: 'bool'},
+    
+    // helpful stuff for working with aframe input
+    addKeyboardHelpers: {default: true, type: 'bool'},
+    saveCommandHistory: {default: true, type: 'bool'},
+    
+    thumbstickScrolling: {default: '', type: 'selector'}
   },
 ```
 
@@ -134,6 +168,7 @@ this is 99% done... only thing needed is a custom aframe-super-keyboard layout t
 
 ## roadmap: maybe, pull request welcome
   - support for native console text inline colors (currently design to only allow color-per-input, would probably just need to add a flag that allows inputs to be chained without newlines along with color string processing)
+    - actually, should probably utilize this more in depth and possibly get full range of css expression: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/font
   - expanding support for the [console object API](https://developer.mozilla.org/en-US/docs/Web/API/console) (debug and info should 'just work')
-  - single-page mode (so, instead of adding to history, a way to keep modifying the visible lines, enabling text-GUI stuff a-la HTOP, etc.) (easy to implement with current design, but probably no demand for it)
+  - single-page mode (so, instead of adding to history, a way to keep modifying the visible lines, enabling text-GUI stuff a-la HTOP, etc.) (easy to implement with current design, but probably no demand for it; did something similar with keyboard support)
   - allow JSON stringify custom settings (not hard to implement, probably no demand for it)
