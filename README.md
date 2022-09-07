@@ -1,3 +1,5 @@
+![jsDelivr hits (GitHub)](https://img.shields.io/jsdelivr/gh/hm/kylebakerio/a-console)
+
 # a-console
 A better, canvas-based console for A-Frame. Currently in 'alpha', but should already be the best thing out there. 
 
