@@ -5,10 +5,9 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 - Developed for A-Frame 1.3.0
 - **Scroll through console history using thumbstick events**
 - Prints all logs to a virtual 16:10 2k vertically oriented screen by default
-- But, **handles any custom screen size you want, with any font size you want**--just set geometry and pixel-width resolution
+- But, **handles any custom screen size you want, with any font size you want**--just set geometry and resolution (`pixel-width`)
 - **Prints stack traces** for errors by default; green for log, yellow for warn, red for error by default
 - Handles line breaks for lines that are too wide, auto-scrolls on new input, handles font and screen resizing smoothly
-- Full automatic text reflowing for dynamic screen resolution updates, font size updates, and geometry updates
 - **Stringifies and pretty-prints objects** that are console-logged; when not able to (circular, etc.), prints object's keys
 - Uses HTML Canvas as a texture under the hood to minimize draw call strain, and only stores last 2000 entries to prevent memory leak from logging
 - Correctly parses color-interpolated console strings used by A-Frame core (e.g., logs you see like `core:warn blah blah` where `core:warn` is orange)
