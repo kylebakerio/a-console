@@ -1,6 +1,8 @@
 # a-console
 A better, canvas-based console for A-Frame. Currently in 'alpha', but should already be the best thing out there. 
 
+<a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
+
 ### Viewing live logs
 - Developed for A-Frame 1.3.0
 - **Scroll through console history using thumbstick events**
@@ -24,9 +26,6 @@ A better, canvas-based console for A-Frame. Currently in 'alpha', but should alr
 
 ### Virtual keyoard
 - While technically you can inject a `superkeyboard` and use it with the console, the default super keyboard lacks keys for symbols needed to write code. Pull request welcome to add a custom keyboard! That said, coding is much nicer on a real keyboard, so I recommend using a bluetooth keyboard anyways.
-
-<a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
-
 
 ![Screenshot from 2022-08-20 04-21-13](https://user-images.githubusercontent.com/6391152/185741660-0c40d8e8-563d-459a-bf41-1abfcc1b1560.png)
 
