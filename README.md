@@ -1,7 +1,10 @@
 ![jsDelivr hits (GitHub)](https://img.shields.io/jsdelivr/gh/hm/kylebakerio/a-console)
 
 # a-console
-A better, canvas-based console for A-Frame. Currently in 'alpha', but should already be the best thing out there. 
+**The** full featured, canvas-based Javascript console for A-Frame. Connect a bluetooth controller and enter commands, or just view your logs live, scrolling with thumbstick.
+
+- Check out a quick 4 minute intro showing it here: https://youtu.be/GmLl_2yfhGc
+- Check out the demo here: https://canvas-log.glitch.me/
 
 <a href='https://ko-fi.com/kylev' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /><a/>
 
