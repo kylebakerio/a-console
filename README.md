@@ -38,7 +38,16 @@ https://canvas-log.glitch.me/
 
 ## how-to
 By default it will intercept console.log/warn/error, and print stack traces on error. You can also manually print to the console with the `writeToCanvas()` method.
-For the basic use case, literally just add this line to your scene:
+For the basic use case, literally just add the source:
+
+```html
+<head>
+    <!-- add aframe first, then add this component -->
+    <script src="https://cdn.jsdelivr.net/gh/kylebakerio/a-console@1.0.0/a-console.js"></script>
+</head>
+```
+
+and then, this line to your scene:
 
 ```html
 <a-console position="0 1.5 -2"></a-console>
