@@ -305,11 +305,8 @@ AFRAME.registerComponent('console', {
   commandOffset: 0,
   exploringInputHistory: false,
   addKeyboardHelpers(force) {
-    // todo
-    if (window.ac && !force) {
-      throw new Error("helper conflict: window.ac already exists...")
-    } else if (window.ac && force) {
-      console.warn("ignoring conflict: window.ac already exists")
+    if (window.ac) {
+      console.info("ignoring conflict: window.ac already exists, will overwrite")
     }
     window.ac = {
       logAll: true,
