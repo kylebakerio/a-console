@@ -48,7 +48,7 @@ For the basic use case, literally just add the source:
 ```html
 <head>
     <!-- add aframe first, then add this component -->
-    <script src="https://cdn.jsdelivr.net/gh/kylebakerio/a-console@1.0.1/a-console.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/kylebakerio/a-console@1.0.2/a-console.js"></script>
 </head>
 ```
 
