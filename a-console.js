@@ -774,6 +774,9 @@ AFRAME.registerComponent('console', {
     } else {
       let logString = "";
       logString = arrayOfArgs.reduce((logString, arg, i) => {
+        if (i > 0) {
+          logString += " "; // space between arguments
+        }
         if (i === arrayOfArgs.length-1 && hasStackTrace) {
           return logString; // in other words, skip, because we send it as a separate input
         }
