@@ -83,6 +83,18 @@ I suggest you do it like this:
 
 You can ignore these settings and just get a basic panel with decent defaults, or fit it into your world wherever you like. It's recommended you attach it to a controller rather than your head if you want to bring it around with you, though.
 
+An example:
+
+"I want a 16:9 1080p screen positioned vertically"
+So:
+// set height/width to 16:9, with the long side being height
+height: 1.6
+width: .9
+// set pixels for the width side:
+pixel-width: 1080 // how many pixels go on the width (.9) side; 1920 per 1.6 will be auto-calculated to keep pixels square, so we don't have to specify that
+font-size: 25 // whatever is readable at the geometry scale you picked
+
+
 ## All options
 - **I always advise that you check the schema for up-to-date options.**
 - **always check the update() function, it may be that some settings only work on init()**
