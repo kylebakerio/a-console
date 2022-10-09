@@ -94,6 +94,8 @@ width: .9
 pixel-width: 1080 // how many pixels go on the width (.9) side; 1920 per 1.6 will be auto-calculated to keep pixels square, so we don't have to specify that
 font-size: 25 // whatever is readable at the geometry scale you picked
 
+## performance
+while using the canvas means this app does not add draw calls and so should have relatively low impact on fps, no attempts have been made _at all_ to make it sensitive to garbage collection--it churns through thousands of arrays and objects as new lines are added. premature optimization is the root of all evil, so making it work was the priority.
 
 ## All options
 - **I always advise that you check the schema for up-to-date options.**
@@ -200,6 +202,7 @@ AFRAME.registerComponent('console', {
 Check out index.html for some examples.
 
 ## further things that I might add or accept pull requests for:
+  - when scrolling, stop new content from causing auto-scroll down
   - inclusive/exclusive filter                       
   - make stack traces toggle/revealable
   - per-line font size (would be very easy to implement, but low priority, not sure anyone would use this feature)
