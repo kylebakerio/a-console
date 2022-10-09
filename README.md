@@ -28,6 +28,7 @@
 - Smooth scroll through console with pgup/pgdn
 - Stores input history between sessions! Your long typed out commands persist between sessions.
 - Includes number of built-in helpers to make working with your virtual world much smoother, just type `help`
+- **requires that the server serving the page explicitly indicates that eval() is allowed** (glitch.com does this by default, fwiw).    
 
 ### Virtual keyoard
 - While technically you can inject a `superkeyboard` and use it with the console, the default super keyboard lacks keys for symbols needed to write code. Pull request welcome to add a custom keyboard! That said, coding is much nicer on a real keyboard, so I recommend using a bluetooth keyboard anyways.
