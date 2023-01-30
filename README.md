@@ -40,7 +40,7 @@ https://user-images.githubusercontent.com/6391152/185741975-a4cf08da-a521-46db-9
 _Also: check out [vr-super-stats](https://github.com/kylebakerio/vr-super-stats) to see live stats while in-headset._
 
 ## demo
-https://canvas-log.glitch.me/
+https://a-console.glitch.me/
 
 ## how-to
 By default it will intercept console.log/warn/error, and print stack traces on error. You can also manually print to the console with the `writeToCanvas()` method.
